@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FilmTracker - Tu Diario de Cine</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- CSS -->
+    <link rel="stylesheet" href="css/style.css">
+    <!-- Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-box">
+            <h1>FilmTracker</h1>
+            <p style="color: var(--text-muted); margin-bottom: 24px;">Rastrea. Descubre. Analiza.</p>
+            
+            <form id="authForm">
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" class="form-input" placeholder="tu@email.com" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="password">Contraseña</label>
+                    <input type="password" id="password" class="form-input" placeholder="••••••••" required>
+                </div>
+
+                <button type="button" id="loginBtn" class="btn btn-primary" style="width: 100%; margin-bottom: 12px;">
+                    Iniciar Sesión
+                </button>
+                <button type="button" id="signupBtn" class="btn btn-secondary" style="width: 100%;">
+                    Crear Cuenta
+                </button>
+            </form>
+            
+            <div id="authMessage" style="margin-top: 16px; font-size: 0.9rem;"></div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script type="module" src="js/auth.js"></script>
+</body>
+</html>
