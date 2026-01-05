@@ -86,9 +86,27 @@ export async function renderWatchlist(containerId) {
 
         gridContainer.innerHTML = `
             <div class="grid-movies">
-                ${items.map(item => `
+                ${items.map(item => {
+            // Ribbon Logic
+            const today = new Date();
+            const theaterCutoff = new Date();
+            theaterCutoff.setDate(today.getDate() - 35); // 35 days heuristic
+            const releaseDate = new Date(item.movie.release_date);
+            let ribbon = '';
+            if (item.movie.release_date) {
+                if (releaseDate > today) {
+                    ribbon = '<div class="ribbon ribbon-upcoming">Próximamente</div>';
+                } else if (releaseDate >= theaterCutoff) {
+                    ribbon = '<div class="ribbon ribbon-theater">Solo en Cines</div>';
+                }
+            }
+
+            return `
                     <div class="movie-card" style="cursor:pointer;" onclick="import('./js/features/logging.js').then(m => m.openLogModal(${item.tmdb_id}))">
-                        <img src="${TMDB.getImageUrl(item.movie.poster_path)}" class="movie-poster">
+                        <div class="poster-container" style="position:relative; overflow:hidden; border-radius:12px;">
+                            <img src="${TMDB.getImageUrl(item.movie.poster_path)}" class="movie-poster" style="border-radius:0;">
+                            ${ribbon}
+                        </div>
                         <div class="movie-info">
                             <div class="movie-title">${item.movie.title}</div>
                             <div class="movie-meta">
@@ -100,7 +118,7 @@ export async function renderWatchlist(containerId) {
                             </button>
                         </div>
                     </div>
-                `).join('')}
+                `}).join('')}
             </div>
         `;
     };

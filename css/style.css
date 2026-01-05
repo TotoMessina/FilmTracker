@@ -733,9 +733,52 @@ button {
         color: var(--text);
         font-size: 1.2rem;
     }
+
+    /* Light Theme Overrides for Mobile */
+    body.light-theme .bottom-nav {
+        background: rgba(255, 255, 255, 0.95);
+    }
+
+    body.light-theme .header-bar {
+        background: rgba(255, 255, 255, 0.95);
+    }
 }
 
 /* Desktop override for back btn */
 .mobile-back-btn {
     display: none;
+}
+
+/* Ribbons */
+.ribbon {
+    position: absolute;
+    top: 22px;
+    left: -50px;
+    /* Adjust based on rotation and width */
+    width: 200px;
+    background: var(--primary);
+    /* Red #E50914 */
+    color: white;
+    text-align: center;
+    font-size: 0.8rem;
+    /* Larger font */
+    font-weight: 800;
+    /* Bolder */
+    padding: 6px 0;
+    transform: rotate(-45deg);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.6);
+    z-index: 10;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.ribbon-theater {
+    background: var(--primary);
+    /* Force Red */
+}
+
+.ribbon-upcoming {
+    background: var(--primary);
+    /* Force Red as requested "la cinta sea roja" */
+    color: white;
 }

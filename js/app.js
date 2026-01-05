@@ -30,6 +30,14 @@ function renderMobileMenu() {
             <button class="modal-close"><i class="fas fa-times"></i></button>
         </div>
         <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:16px; text-align:center;">
+            <a href="#profile" class="mobile-menu-item" onclick="closeMobileMenu()">
+                <div class="menu-icon-box"><i class="fas fa-user"></i></div>
+                <span>Perfil</span>
+            </a>
+            <a href="#social" class="mobile-menu-item" onclick="closeMobileMenu()">
+                <div class="menu-icon-box"><i class="fas fa-users"></i></div>
+                <span>Comunidad</span>
+            </a>
             <a href="#stats" class="mobile-menu-item" onclick="closeMobileMenu()">
                 <div class="menu-icon-box"><i class="fas fa-chart-line"></i></div>
                 <span>Stats</span>
@@ -246,10 +254,16 @@ async function renderView(view) {
                     <div class="card" style="padding: 20px; margin-top: 20px;">
                         <h3>Cuenta</h3>
                         <p style="color:var(--text-muted); font-size:0.9rem;">Sesión iniciada como <b>${currentUser?.email}</b></p>
-                        <button class="btn btn-danger" style="width:100%; margin-top:10px;" onclick="supabase.auth.signOut().then(() => window.location.href='index.html')">Cerrar Sesión</button>
+                        <button id="settingsLogoutBtn" class="btn btn-danger" style="width:100%; margin-top:10px;">Cerrar Sesión</button>
                     </div>
                 </div>
             `;
+
+            // Attach Event Listeners
+            document.getElementById('settingsLogoutBtn').addEventListener('click', async () => {
+                await supabase.auth.signOut();
+                window.location.href = 'index.html';
+            });
             break;
         case 'profile':
             // Assume hash is like #profile?id=123
@@ -445,11 +459,16 @@ async function renderSearch() {
 
             <!-- Discovery Filters (Pills) -->
             <div style="background:var(--surface); padding:16px; border-radius:12px; margin-bottom:24px; border:1px solid var(--border);">
-                 <!-- Time Filter -->
-                <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
-                    <label style="color:var(--text-muted); font-size:0.9rem;"><i class="fas fa-clock"></i> Tiempo disponible:</label>
-                    <input type="range" id="discoverTimeSlider" min="60" max="240" step="15" value="240" style="flex:1; cursor:pointer;">
-                    <span id="discoverTimeDisplay" style="font-weight:bold; min-width:80px; text-align:right;">Cualquiera</span>
+                 <!-- Time Filter & Advanced -->
+                <div style="display:flex; flex-wrap:wrap; align-items:center; gap:16px; margin-bottom:16px;">
+                    <div style="flex:1; display:flex; align-items:center; gap:8px;">
+                        <label style="color:var(--text-muted); font-size:0.9rem;"><i class="fas fa-clock"></i> Tiempo max:</label>
+                        <input type="range" id="discoverTimeSlider" min="60" max="240" step="15" value="240" style="width:120px; cursor:pointer;">
+                        <span id="discoverTimeDisplay" style="font-weight:bold; min-width:60px; font-size:0.8rem;">Cualquiera</span>
+                    </div>
+                    <button id="openFiltersBtn" class="btn btn-sm btn-secondary">
+                        <i class="fas fa-sliders-h"></i> Filtros
+                    </button>
                 </div>
 
                 <div id="discoveryPills" class="no-scrollbar" style="display:flex; gap:12px; overflow-x:auto; padding-bottom:12px; margin-bottom:24px;">
@@ -596,7 +615,15 @@ function setupDiscoveryEvents() {
         });
     }
 
-    // 4. Infinite Scroll
+    // 4. Filter Button Logic
+    const filterBtn = document.getElementById('openFiltersBtn');
+    if (filterBtn) {
+        filterBtn.addEventListener('click', () => {
+            openFiltersModal();
+        });
+    }
+
+    // 5. Infinite Scroll
     const trigger = document.getElementById('loadingTrigger');
     if (trigger) {
         const observer = new IntersectionObserver((entries) => {
@@ -610,28 +637,35 @@ function setupDiscoveryEvents() {
 
 async function switchDiscoveryMode(mode, { genre, query, title } = {}) {
     discoveryState.mode = mode;
+    discoveryState.seedTitle = ''; // Reset seed title unless set by logic
 
     // Update Params based on mode
-    if (mode === 'genre') {
-        discoveryState.params = { with_genres: genre };
-        // Keep runtime filter if exists? Yes, merging.
-        // But currently params is overwritten in some places. 
-        // Let's ensure we merge with existing runtime filter if needed, 
-        // but typically switching mode resets other filters except maybe runtime.
-        // For simplicity:
-        const currentRuntime = discoveryState.params['with_runtime.lte'];
-        discoveryState.params = { with_genres: genre };
-        if (currentRuntime) discoveryState.params['with_runtime.lte'] = currentRuntime;
+    // We want to PRESERVE manual filters (year, provider) unless explicitly cleared or searching
+    const currentFilters = { ...discoveryState.params };
+    // Clear "Mode-specific" params from previous modes
+    delete currentFilters.with_genres;
+    delete currentFilters.sort_by;
+    delete currentFilters.query;
 
+    // Default Sort
+    currentFilters.sort_by = 'popularity.desc';
+
+    if (mode === 'genre') {
+        currentFilters.with_genres = genre;
     } else if (mode === 'search') {
-        discoveryState.params = { query }; // Search is exclusive usually
+        discoveryState.params = { query }; // Search is exclusive
         discoveryState.seedTitle = query;
-    } else {
-        // Trending, recommendations, etc.
-        const currentRuntime = discoveryState.params['with_runtime.lte'];
-        discoveryState.params = {};
-        if (currentRuntime) discoveryState.params['with_runtime.lte'] = currentRuntime;
+        // Skip normal params for search endpoint usually
+        resetGrid(mode);
+        await fetchDiscoveryMovies();
+        return;
+    } else if (mode === 'trending') {
+        // Just defaults
+        currentFilters.sort_by = 'popularity.desc';
     }
+    // For smart/recommendations, we will handle params dynamically in fetch
+
+    discoveryState.params = currentFilters;
 
     // Title Query
     if (title) document.getElementById('moviesGridTitle').textContent = title;
@@ -653,34 +687,75 @@ async function fetchDiscoveryMovies() {
 
     try {
         if (mode === 'search') {
-            // Search API doesn't support runtime filter well, but we can client-side filter if needed
-            // For now, raw search
             results = await TMDB.searchMovies(seedTitle);
-            discoveryState.hasMore = false; // Simple one-page search for now
-        } else if (mode === 'trending') {
-            // Use discover for trending to allow filters
+            discoveryState.hasMore = false;
+        }
+        else if (mode === 'smart') {
+            // 1. Get User History (Diary + Watchlist)
+            if (page === 1) {
+                const { data: logs } = await supabase.from('diary_logs').select('tmdb_id, title').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(20);
+                const { data: wl } = await supabase.from('watchlist').select('tmdb_id, title').eq('user_id', currentUser.id).limit(20);
+
+                const combined = [...(logs || []), ...(wl || [])];
+                if (combined.length > 0) {
+                    const random = combined[Math.floor(Math.random() * combined.length)];
+                    discoveryState.seedId = random.tmdb_id;
+                    discoveryState.seedName = random.title;
+                    document.getElementById('moviesGridTitle').textContent = `Porque te interesó "${random.title}"`;
+                }
+            }
+
+            if (discoveryState.seedId) {
+                const recs = await TMDB.getRecommendations(discoveryState.seedId, page);
+                results = recs;
+            } else {
+                // Fallback
+                results = await TMDB.discoverMovies({ sort_by: 'popularity.desc', page, ...params });
+            }
+        }
+        else if (mode === 'recommendations_log') {
+            if (page === 1) {
+                const { data: logs } = await supabase.from('diary_logs').select('tmdb_id, title').eq('user_id', currentUser.id).order('watched_date', { ascending: false }).limit(1).single();
+                if (logs) {
+                    discoveryState.seedId = logs.tmdb_id;
+                    discoveryState.seedName = logs.title;
+                    document.getElementById('moviesGridTitle').textContent = `Porque viste "${logs.title}"`;
+                }
+            }
+            if (discoveryState.seedId) {
+                const recs = await TMDB.getRecommendations(discoveryState.seedId, page);
+                results = recs;
+            } else {
+                results = await TMDB.discoverMovies({ sort_by: 'popularity.desc', page, ...params });
+            }
+        }
+        else if (mode === 'recommendations_wl') {
+            if (page === 1) {
+                // Random watchlist item
+                const { data: wl } = await supabase.from('watchlist').select('tmdb_id, title').eq('user_id', currentUser.id);
+                if (wl && wl.length > 0) {
+                    const random = wl[Math.floor(Math.random() * wl.length)];
+                    discoveryState.seedId = random.tmdb_id;
+                    discoveryState.seedName = random.title;
+                    document.getElementById('moviesGridTitle').textContent = `De tu Watchlist: "${random.title}" y similares`;
+                }
+            }
+            if (discoveryState.seedId) {
+                const recs = await TMDB.getRecommendations(discoveryState.seedId, page);
+                results = recs;
+            } else {
+                results = await TMDB.discoverMovies({ sort_by: 'popularity.desc', page, ...params });
+            }
+        }
+        else {
+            // General Discover (Trending, Genre, Random, etc.)
+            // Logic for Random mode page is handled in switch? No, let's keep it simple here or in switch
+            // If random mode, we might want to randomize page every time? 
+            let finalPage = page;
+            if (mode === 'random' && page === 1) finalPage = Math.floor(Math.random() * 50) + 1;
+
             results = await TMDB.discoverMovies({
-                sort_by: 'popularity.desc',
-                page,
-                ...params
-            });
-        } else if (mode === 'genre') {
-            results = await TMDB.discoverMovies({
-                page,
-                ...params
-            });
-        } else if (mode === 'random') {
-            results = await TMDB.discoverMovies({
-                sort_by: 'popularity.desc',
-                page: Math.floor(Math.random() * 50) + 1,
-                ...params
-            });
-        } else if (mode === 'recommendations_wl' || mode === 'recommendations_log') {
-            // Complex logic omitted for brevity, fallback to trending
-            results = await TMDB.discoverMovies({
-                sort_by: 'vote_average.desc',
-                'vote_count.gte': 500,
-                page,
+                page: finalPage,
                 ...params
             });
         }
@@ -703,9 +778,33 @@ function appendMovies(movies) {
     const container = document.getElementById('searchResults');
     if (!container) return;
 
-    const html = movies.map(movie => `
+    const today = new Date();
+    const theaterCutoff = new Date();
+    theaterCutoff.setDate(today.getDate() - 35); // Reduced to 35 days to avoid overlap with digital
+
+    // Check if provider filters are active (if so, we definitely shouldn't show "Solo en Cines")
+    const hasProviderFilters = discoveryState.params.with_watch_providers && discoveryState.params.with_watch_providers.length > 0;
+
+    const html = movies.map(movie => {
+        const releaseDate = new Date(movie.release_date);
+        let ribbon = '';
+
+        if (movie.release_date) {
+            if (releaseDate > today) {
+                ribbon = '<div class="ribbon ribbon-upcoming">Próximamente</div>';
+            } else if (releaseDate >= theaterCutoff && !hasProviderFilters) {
+                // heuristic: recent release = in theaters
+                // But if we filtered by Netflix, we KNOW it's on Netflix, so don't show "Solo en Cines"
+                ribbon = '<div class="ribbon ribbon-theater">Solo en Cines</div>';
+            }
+        }
+
+        return `
         <div class="movie-card" onclick="window.handleMovieClick(${movie.id})">
-            <img src="${TMDB.getImageUrl(movie.poster_path)}" class="movie-poster" alt="${movie.title}" loading="lazy">
+            <div class="poster-container" style="position:relative; overflow:hidden; border-radius:12px;">
+                <img src="${TMDB.getImageUrl(movie.poster_path)}" class="movie-poster" alt="${movie.title}" loading="lazy" style="border-radius:0;">
+                ${ribbon}
+            </div>
             <div class="movie-info">
                 <div class="movie-title">${movie.title}</div>
                 <div class="movie-meta">
@@ -714,7 +813,8 @@ function appendMovies(movies) {
                 </div>
             </div>
         </div>
-    `).join('');
+        `;
+    }).join('');
     container.insertAdjacentHTML('beforeend', html);
 }
 // We attach this to window so onclick works in HTML string
@@ -809,4 +909,239 @@ function openEditProfileModal(profile) {
             window.location.reload();
         }
     });
+}
+
+function openFiltersModal() {
+    const existing = document.getElementById('filtersModal');
+    if (existing) existing.remove();
+
+    const backdrop = document.createElement('div');
+    backdrop.id = 'filtersModal';
+    backdrop.className = 'modal-backdrop active';
+
+    // Generate years
+    const currentYear = new Date().getFullYear();
+    const years = [];
+    for (let i = currentYear; i >= 1900; i--) years.push(i);
+    const yearOptions = years.map(y => `<option value="${y}">${y}</option>`).join('');
+
+    backdrop.innerHTML = `
+        <div class="modal-content" style="max-width:500px; height:auto; overflow:visible;">
+            <div class="modal-header">
+                <h3>Filtros Avanzados</h3>
+                <button class="modal-close"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body" style="grid-template-columns: 1fr; gap:16px;">
+                
+                <!-- Sort -->
+                <div class="form-group">
+                    <label>Ordenar Por</label>
+                    <select id="filterSort" class="form-input" style="background:var(--surface); color:var(--text);">
+                        <option value="popularity.desc">Más Populares (Default)</option>
+                        <option value="popularity.asc">Menos Populares</option>
+                        <option value="vote_average.desc">Mejor Calificadas</option>
+                        <option value="primary_release_date.desc">Más Nuevas</option>
+                        <option value="primary_release_date.asc">Más Antiguas</option>
+                        <option value="revenue.desc">Mayor Recaudación</option>
+                    </select>
+                </div>
+
+                <!-- Status (New) -->
+                <div class="form-group">
+                    <label>Estado</label>
+                    <select id="filterStatus" class="form-input" style="background:var(--surface); color:var(--text);">
+                        <option value="">Cualquiera</option>
+                        <option value="theaters">Solo en Cines</option>
+                        <option value="upcoming">Próximamente</option>
+                    </select>
+                </div>
+
+                <!-- Year -->
+                <div class="form-group">
+                    <label>Año de Lanzamiento</label>
+                    <select id="filterYear" class="form-input" style="background:var(--surface); color:var(--text);">
+                        <option value="">Cualquiera</option>
+                        ${yearOptions}
+                    </select>
+                </div>
+
+                <!-- Providers -->
+                <div class="form-group">
+                    <label>Plataforma (Streaming)</label>
+                    <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                        <label class="provider-check" style="cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;">
+                            <input type="checkbox" name="provider" value="8" style="display:none;">
+                            <img src="https://image.tmdb.org/t/p/original/t2yyOv40HZeVUxj05m4UqxBbD9T.jpg" style="width:40px; height:40px; border-radius:8px; opacity:0.5; border:2px solid transparent; transition:all 0.2s;">
+                            <span style="font-size:0.7rem;">Netflix</span>
+                        </label>
+                         <label class="provider-check" style="cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;">
+                            <input type="checkbox" name="provider" value="337" style="display:none;">
+                            <img src="https://image.tmdb.org/t/p/original/pbpMk2JmcoNnQwx5JGpXngfoWtp.jpg" style="width:40px; height:40px; border-radius:8px; opacity:0.5; border:2px solid transparent; transition:all 0.2s;">
+                            <span style="font-size:0.7rem;">Disney+</span>
+                        </label>
+                        <label class="provider-check" style="cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;">
+                            <input type="checkbox" name="provider" value="119" style="display:none;">
+                            <img src="https://image.tmdb.org/t/p/original/sVBEF7q7LqjHAWSnKwDbznr2zZG.jpg" style="width:40px; height:40px; border-radius:8px; opacity:0.5; border:2px solid transparent; transition:all 0.2s;">
+                            <span style="font-size:0.7rem;">Prime</span>
+                        </label>
+                        <label class="provider-check" style="cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;">
+                            <input type="checkbox" name="provider" value="1899" style="display:none;">
+                            <img src="https://image.tmdb.org/t/p/original/6uhMBGF5KQkvPq4FvJ4NzbT1Y6l.jpg" style="width:40px; height:40px; border-radius:8px; opacity:0.5; border:2px solid transparent; transition:all 0.2s;">
+                            <span style="font-size:0.7rem;">Max</span>
+                        </label>
+                         <label class="provider-check" style="cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;">
+                            <input type="checkbox" name="provider" value="350" style="display:none;">
+                            <img src="https://image.tmdb.org/t/p/original/2E03IAFuvSVWspjNJ31pMks99D3.jpg" style="width:40px; height:40px; border-radius:8px; opacity:0.5; border:2px solid transparent; transition:all 0.2s;">
+                            <span style="font-size:0.7rem;">Apple</span>
+                        </label>
+                        <label class="provider-check" style="cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;">
+                            <input type="checkbox" name="provider" value="531" style="display:none;">
+                            <img src="https://image.tmdb.org/t/p/original/fi83B1oztoS47xxcemFd8mWmOPE.jpg" style="width:40px; height:40px; border-radius:8px; opacity:0.5; border:2px solid transparent; transition:all 0.2s;">
+                            <span style="font-size:0.7rem;">Paramount+</span>
+                        </label>
+                         <label class="provider-check" style="cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;">
+                            <input type="checkbox" name="provider" value="167" style="display:none;">
+                            <img src="https://image.tmdb.org/t/p/original/21dFyk4qx60P9U9d6t882fT7UaR.jpg" style="width:40px; height:40px; border-radius:8px; opacity:0.5; border:2px solid transparent; transition:all 0.2s;">
+                            <span style="font-size:0.7rem;">Claro</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                     <label>Géneros Extra</label>
+                     <select id="filterGenre" class="form-input" style="background:var(--surface); color:var(--text);">
+                        <option value="">Ninguno</option>
+                        <option value="28">Acción</option>
+                        <option value="12">Aventura</option>
+                        <option value="16">Animación</option>
+                        <option value="35">Comedia</option>
+                        <option value="80">Crimen</option>
+                        <option value="99">Documental</option>
+                        <option value="18">Drama</option>
+                        <option value="10751">Familia</option>
+                        <option value="14">Fantasía</option>
+                        <option value="36">Historia</option>
+                        <option value="27">Terror</option>
+                        <option value="10402">Música</option>
+                        <option value="9648">Misterio</option>
+                        <option value="10749">Romance</option>
+                        <option value="878">Ciencia Ficción</option>
+                        <option value="10770">Película de TV</option>
+                        <option value="53">Suspense</option>
+                        <option value="10752">Bélica</option>
+                        <option value="37">Western</option>
+                     </select>
+                </div>
+
+                <button id="applyFiltersBtn" class="btn btn-primary" style="width:100%;">Aplicar Filtros</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(backdrop);
+
+    // Initial Logic (Pre-select based on current state)
+    if (discoveryState.params.sort_by) document.getElementById('filterSort').value = discoveryState.params.sort_by;
+    if (discoveryState.params.primary_release_year) document.getElementById('filterYear').value = discoveryState.params.primary_release_year;
+    if (discoveryState.params.with_genres) document.getElementById('filterGenre').value = discoveryState.params.with_genres;
+    if (discoveryState.filterStatus) document.getElementById('filterStatus').value = discoveryState.filterStatus;
+
+    // Checkboxes
+    if (discoveryState.params.with_watch_providers) {
+        const selected = discoveryState.params.with_watch_providers.split('|');
+        backdrop.querySelectorAll('input[name="provider"]').forEach(chk => {
+            if (selected.includes(chk.value)) {
+                chk.checked = true;
+                chk.nextElementSibling.style.opacity = '1';
+                chk.nextElementSibling.style.borderColor = 'var(--primary)';
+            }
+        });
+    }
+
+    // Toggle Visuals for Checkboxes
+    backdrop.querySelectorAll('input[name="provider"]').forEach(chk => {
+        chk.addEventListener('change', e => {
+            const img = e.target.nextElementSibling;
+            if (e.target.checked) {
+                img.style.opacity = '1';
+                img.style.borderColor = 'var(--primary)';
+            } else {
+                img.style.opacity = '0.5';
+                img.style.borderColor = 'transparent';
+            }
+        });
+    });
+
+
+    // Close
+    const close = () => backdrop.remove();
+    backdrop.querySelector('.modal-close').onclick = close;
+    backdrop.onclick = (e) => { if (e.target === backdrop) close(); }
+
+    // Apply
+    document.getElementById('applyFiltersBtn').onclick = () => {
+        const sort = document.getElementById('filterSort').value;
+        const year = document.getElementById('filterYear').value;
+        const genre = document.getElementById('filterGenre').value;
+
+        // Providers
+        const providers = [];
+        backdrop.querySelectorAll('input[name="provider"]:checked').forEach(c => providers.push(c.value));
+
+        // Update State
+        const newParams = { ...discoveryState.params };
+
+        if (sort) newParams.sort_by = sort;
+        if (year) newParams.primary_release_year = year;
+        else delete newParams.primary_release_year;
+
+        if (genre) newParams.with_genres = genre;
+
+        // Status Logic
+        const status = document.getElementById('filterStatus').value;
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        const todayStr = `${yyyy}-${mm}-${dd}`;
+
+        // Reset status params
+        delete newParams['primary_release_date.gte'];
+        delete newParams['primary_release_date.lte'];
+        delete newParams.with_release_type;
+
+        if (status === 'upcoming') {
+            newParams['primary_release_date.gte'] = todayStr;
+            newParams['primary_release_date.lte'] = String(parseInt(yyyy) + 2) + '-12-31'; // Next 2 years cap
+        } else if (status === 'theaters') {
+            const cutoffDate = new Date();
+            cutoffDate.setDate(today.getDate() - 45);
+            const cY = cutoffDate.getFullYear();
+            const cM = String(cutoffDate.getMonth() + 1).padStart(2, '0');
+            const cD = String(cutoffDate.getDate()).padStart(2, '0');
+
+            newParams['primary_release_date.gte'] = `${cY}-${cM}-${cD}`;
+            newParams['primary_release_date.lte'] = todayStr;
+            newParams.with_release_type = '3|2'; // Theatrical
+        }
+
+        if (providers.length > 0) {
+            newParams.with_watch_providers = providers.join('|');
+            newParams.watch_region = 'MX'; // Required for providers
+        } else {
+            delete newParams.with_watch_providers;
+            delete newParams.watch_region;
+        }
+
+        discoveryState.params = newParams;
+        // Persist status selection in a crude way if we wanted re-open persistence, 
+        // but for now we just rely on params. logic to pre-fill would fail without explicit state.
+        // We can infer:
+        if (status) discoveryState.filterStatus = status; // Helper
+        else delete discoveryState.filterStatus;
+
+        resetGrid(); // Keep current mode but reset page
+        fetchDiscoveryMovies();
+        close();
+    };
 }

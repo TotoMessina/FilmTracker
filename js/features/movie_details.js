@@ -86,6 +86,24 @@ export async function openMovieDetails(tmdbId) {
                 ${movie.genres.map(g => `<span style="background: var(--surface); padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; color: var(--text-muted); border: 1px solid var(--border);">${g.name}</span>`).join('')}
             </div>
 
+            <!-- Providers Section -->
+            <div style="margin-bottom: 24px;">
+                ${(() => {
+            const providers = movie['watch/providers']?.results?.MX?.flatrate;
+            if (!providers || providers.length === 0) return '';
+            return `
+                        <h4 style="margin-bottom: 12px; font-size: 0.9rem; color: var(--text-muted);">🎬 Disponible en:</h4>
+                        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                            ${providers.map(p => `
+                                <img src="${TMDB.getImageUrl(p.logo_path, 'original')}" 
+                                     title="${p.provider_name}" 
+                                     style="width: 40px; height: 40px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+                            `).join('')}
+                        </div>
+                    `;
+        })()}
+            </div>
+
             <hr style="border: 0; border-top: 1px solid var(--border); margin-bottom: 24px;">
 
             <!-- Reviews Section -->
