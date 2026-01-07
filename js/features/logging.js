@@ -242,6 +242,7 @@ async function handleAddToWatchlist() {
         release_date: currentMovie.release_date || null,
         runtime: currentMovie.runtime,
         genres: JSON.stringify(currentMovie.genres),
+        production_companies: JSON.stringify(currentMovie.production_companies),
         production_countries: JSON.stringify(currentMovie.production_countries),
         vote_average: currentMovie.vote_average
     };
@@ -268,6 +269,7 @@ async function handleLogSubmit(e) {
         tmdb_id: currentMovie.id, title: currentMovie.title, poster_path: currentMovie.poster_path,
         backdrop_path: currentMovie.backdrop_path, release_date: currentMovie.release_date || null,
         runtime: currentMovie.runtime, genres: JSON.stringify(currentMovie.genres),
+        production_companies: JSON.stringify(currentMovie.production_companies),
         production_countries: JSON.stringify(currentMovie.production_countries),
         vote_average: currentMovie.vote_average, cast_data: JSON.stringify(cast)
     };

@@ -138,6 +138,9 @@ async function renderChatIntoContainer(container, targetUserId, isMobileWrapper)
         .order('created_at', { ascending: true })
         .limit(50);
 
+    // Mark messages as read
+    await markMessagesAsRead(targetUserId, user.id);
+
     // Back button for mobile modal
     // Note: window.history.back() might take us out of chat if deep linked. 
     // Safest is to remove modal + reset hash.
@@ -234,6 +237,19 @@ function setupRealtime(myId, friendId, container) {
 }
 
 // --- Notifications ---
+
+async function markMessagesAsRead(senderId, myId) {
+    const { error } = await supabase
+        .from('messages')
+        .update({ is_read: true })
+        .eq('sender_id', senderId)
+        .eq('receiver_id', myId)
+        .eq('is_read', false);
+
+    if (!error) {
+        checkUnreadCount();
+    }
+}
 
 export async function checkUnreadCount() {
     const { data: { user } } = await supabase.auth.getUser();

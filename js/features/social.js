@@ -55,8 +55,13 @@ async function loadSuggestions() {
                 </div>
                 <div>
                     <div style="font-weight: bold; margin-bottom: 4px;">${u.username || 'Usuario'}</div>
-                    <div style="font-size: 0.8rem; color: var(--gold); background: rgba(255, 215, 0, 0.1); padding: 4px 8px; border-radius: 12px;">
-                        <i class="fas fa-star"></i> ${u.matchCount} Coincidencias
+                    ${u.compatibility ? `
+                    <div style="font-size: 0.8rem; color: var(--gold); background: rgba(255, 215, 0, 0.1); padding: 4px 8px; border-radius: 12px; margin-bottom:4px;">
+                         ${u.compatibility}% Compatibilidad
+                    </div>
+                    ` : ''}
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">
+                         ${u.matchCount} Películas en común
                     </div>
                 </div>
                 <button class="btn btn-sm btn-secondary" style="width: 100%; margin-top: auto;">Ver Perfil</button>
@@ -97,14 +102,22 @@ function setupSearch() {
             return;
         }
 
-        resultsContainer.innerHTML = profiles.map(profile => `
+        // Calculate and sort by compatibility
+        const profilesWithScore = await Promise.all(profiles.map(async p => {
+            const score = await calculateCompatibility(p.id);
+            return { ...p, compatibility: score };
+        }));
+
+        profilesWithScore.sort((a, b) => b.compatibility - a.compatibility);
+
+        resultsContainer.innerHTML = profilesWithScore.map(profile => `
             <div class="user-card" onclick="window.location.hash = '#profile?id=${profile.id}'" style="background: var(--surface); padding: 16px; border-radius: 12px; display: flex; align-items: center; gap: 16px; cursor: pointer; border: 1px solid var(--border); transition: transform 0.2s;">
                 <div style="width: 50px; height: 50px; border-radius: 50%; background: var(--primary); display: flex; justify-content: center; align-items: center; font-weight: bold; font-size: 1.2rem; overflow: hidden;">
                     ${profile.avatar_url ? `<img src="${profile.avatar_url}" style="width:100%; height:100%; object-fit:cover;">` : (profile.username || 'U').substring(0, 2).toUpperCase()}
                 </div>
                 <div style="text-align: left; flex: 1;">
                     <div style="font-weight: bold; font-size: 1.1rem;">${profile.username || 'Usuario'}</div>
-                    <div style="font-size: 0.85rem; color: var(--text-muted);">Ver perfil</div>
+                    <div style="font-size: 0.9rem; color: var(--gold); font-weight:bold;">${profile.compatibility}% Compatible</div>
                 </div>
                 <i class="fas fa-chevron-right" style="color: var(--text-muted);"></i>
             </div>
@@ -200,12 +213,124 @@ async function getSuggestedUsers() {
         .select('*')
         .in('id', candidateIds);
 
-    // Combine with match count (or 0 for randoms)
-    return profiles.map(p => ({
-        ...p,
-        matchCount: userCounts[p.id] || 0
-    })).sort((a, b) => b.matchCount - a.matchCount);
+    // Combine with match count and Calculate Compatibility for suggestions
+    const finalProfiles = await Promise.all(profiles.map(async p => {
+        const score = await calculateCompatibility(p.id);
+        return {
+            ...p,
+            matchCount: userCounts[p.id] || 0,
+            compatibility: score
+        };
+    }));
 
+    return finalProfiles.sort((a, b) => b.compatibility - a.compatibility);
+
+}
+
+// --- Compatibility Logic ---
+
+export async function calculateCompatibility(targetUserId) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || user.id === targetUserId) return 0;
+
+    // Fetch Logs for both (Idea: use RPC or limited fetch)
+    // For now, fetch ALL rated logs ?? Too heavy.
+    // Let's fetch last 100 rated logs for both
+
+    // Helper to fetch
+    const fetchUserStats = async (uid) => {
+        const { data } = await supabase
+            .from('logs')
+            .select(`
+                tmdb_id, 
+                rating, 
+                movie:movies(genres, production_companies)
+            `)
+            .eq('user_id', uid)
+            .gte('rating', 6) // Only positive ratings matter
+            .limit(100);
+        return data || [];
+    };
+
+    const [myLogs, theirLogs] = await Promise.all([
+        fetchUserStats(user.id),
+        fetchUserStats(targetUserId)
+    ]);
+
+    if (myLogs.length === 0 || theirLogs.length === 0) return 0;
+
+    // 1. Movie Match (Jaccard) - 50%
+    const myMovies = new Set(myLogs.map(l => l.tmdb_id));
+    const theirMovies = new Set(theirLogs.map(l => l.tmdb_id));
+
+    const commonMovies = [...myMovies].filter(x => theirMovies.has(x));
+    const unionMovies = new Set([...myMovies, ...theirMovies]);
+
+    const movieScore = (commonMovies.length / unionMovies.size) * 100;
+
+    // 2. Genre Match (Cosine Sim) - 30%
+    const getGenreVector = (logs) => {
+        const vec = {};
+        logs.forEach(l => {
+            if (l.movie?.genres && Array.isArray(l.movie.genres)) {
+                l.movie.genres.forEach(g => {
+                    vec[g.name] = (vec[g.name] || 0) + 1;
+                });
+            }
+        });
+        return vec;
+    };
+
+    const myGenres = getGenreVector(myLogs);
+    const theirGenres = getGenreVector(theirLogs);
+    const genreScore = cosineSimilarity(myGenres, theirGenres) * 100;
+
+    // 3. Studio Match (Cosine Sim) - 20%
+    const getStudioVector = (logs) => {
+        const vec = {};
+        logs.forEach(l => {
+            // production_companies might be string because of CSV import or object
+            // Just handle array
+            let companies = l.movie?.production_companies;
+            // Check if it's a string (legacy/bug) or object
+            if (typeof companies === 'string') {
+                try { companies = JSON.parse(companies); } catch (e) { }
+            }
+
+            if (companies && Array.isArray(companies)) {
+                companies.forEach(c => {
+                    vec[c.name] = (vec[c.name] || 0) + 1;
+                });
+            }
+        });
+        return vec;
+    };
+
+    const myStudios = getStudioVector(myLogs);
+    const theirStudios = getStudioVector(theirLogs);
+    const studioScore = cosineSimilarity(myStudios, theirStudios) * 100;
+
+    // Weighted Total
+    const total = (movieScore * 0.5) + (genreScore * 0.3) + (studioScore * 0.2);
+    return Math.round(total);
+}
+
+function cosineSimilarity(vecA, vecB) {
+    const keys = new Set([...Object.keys(vecA), ...Object.keys(vecB)]);
+    let dotProduct = 0;
+    let magA = 0;
+    let magB = 0;
+
+    keys.forEach(key => {
+        const valA = vecA[key] || 0;
+        const valB = vecB[key] || 0;
+        dotProduct += valA * valB;
+        magA += valA * valA;
+        magB += valB * valB;
+    });
+
+    if (magA === 0 || magB === 0) return 0;
+    return dotProduct / (Math.sqrt(magA) * Math.sqrt(magB));
 }
 
 // --- Relationship Logic ---
