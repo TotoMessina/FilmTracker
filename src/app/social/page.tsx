@@ -67,27 +67,72 @@ export default function SocialPage() {
           }
         }
 
-        // 3. Compute Soulmates
-        const { data: allProfiles } = await supabase
-          .from("profiles")
-          .select("*")
-          .limit(10);
+        // 3. Compute Soulmates with real shared movie data
+        if (user) {
+          // Get current user's watched tmdb_ids
+          const { data: myLogs } = await supabase
+            .from("logs")
+            .select("tmdb_id")
+            .eq("user_id", user.id);
 
-        if (allProfiles && user) {
-          const others = allProfiles.filter((p) => p.id !== user.id);
-          const computed: SoulmateCandidate[] = others.map((p, idx) => ({
-            profile: p,
-            compatibilityScore: 75 + ((idx * 7) % 23),
-            sharedCount: 3 + ((idx * 2) % 6),
-          }));
-          setSoulmates(computed);
-        } else if (allProfiles && isGuest) {
-          const computed: SoulmateCandidate[] = allProfiles.slice(0, 4).map((p, idx) => ({
-            profile: p,
-            compatibilityScore: 82 + ((idx * 5) % 15),
-            sharedCount: 4 + idx,
-          }));
-          setSoulmates(computed);
+          const myMovieIds = new Set((myLogs || []).map((l: { tmdb_id: number }) => l.tmdb_id));
+
+          const { data: allProfiles } = await supabase
+            .from("profiles")
+            .select("*")
+            .limit(20);
+
+          if (allProfiles && myMovieIds.size > 0) {
+            const others = allProfiles.filter((p) => p.id !== user.id);
+
+            // For each other user, count how many of their movies overlap with ours
+            const soulmatesWithData = await Promise.all(
+              others.map(async (p) => {
+                const { data: theirLogs } = await supabase
+                  .from("logs")
+                  .select("tmdb_id")
+                  .eq("user_id", p.id);
+
+                const theirIds = (theirLogs || []).map((l: { tmdb_id: number }) => l.tmdb_id);
+                const shared = theirIds.filter((id: number) => myMovieIds.has(id));
+                const sharedCount = shared.length;
+
+                // Only include users who have watched at least 1 movie
+                if (theirIds.length === 0) return null;
+
+                // Compatibility: shared / union of both sets
+                const unionSize = new Set([...Array.from(myMovieIds), ...theirIds]).size;
+                const compatibilityScore = unionSize > 0
+                  ? Math.min(99, Math.round((sharedCount / Math.min(unionSize, 50)) * 100))
+                  : 0;
+
+                return { profile: p, compatibilityScore, sharedCount };
+              })
+            );
+
+            const validSoulmates = soulmatesWithData
+              .filter((s): s is SoulmateCandidate => s !== null && s.sharedCount >= 0)
+              .sort((a, b) => b.sharedCount - a.sharedCount || b.compatibilityScore - a.compatibilityScore)
+              .slice(0, 8);
+
+            setSoulmates(validSoulmates);
+          } else if (allProfiles) {
+            // User has no movies yet — show other users without scores
+            const others = allProfiles.filter((p) => p.id !== user.id).slice(0, 8);
+            setSoulmates(others.map((p) => ({ profile: p, compatibilityScore: 0, sharedCount: 0 })));
+          }
+        } else if (isGuest) {
+          const { data: allProfiles } = await supabase
+            .from("profiles")
+            .select("*")
+            .limit(4);
+          if (allProfiles) {
+            setSoulmates(allProfiles.slice(0, 4).map((p) => ({
+              profile: p,
+              compatibilityScore: 0,
+              sharedCount: 0,
+            })));
+          }
         }
       } catch (err) {
         console.warn("Social load error:", err);
@@ -260,7 +305,9 @@ export default function SocialPage() {
                           {sm.profile.username}
                         </h4>
                         <span className="text-[11px] text-zinc-400">
-                          {sm.sharedCount} títulos en común
+                          {sm.sharedCount > 0
+                            ? `${sm.sharedCount} ${sm.sharedCount === 1 ? "título" : "títulos"} en común`
+                            : "Sin películas en común aún"}
                         </span>
                       </div>
                     </Link>
@@ -272,7 +319,7 @@ export default function SocialPage() {
                       <span>Compatibilidad</span>
                     </span>
                     <span className="font-black text-sm text-amber-400">
-                      {sm.compatibilityScore}%
+                      {sm.compatibilityScore > 0 ? `${sm.compatibilityScore}%` : "—"}
                     </span>
                   </div>
 

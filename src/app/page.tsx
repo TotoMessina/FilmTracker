@@ -14,7 +14,8 @@ import {
   ChevronRight,
   TrendingUp,
   Sparkles,
-  Database
+  Database,
+  Ticket
 } from "lucide-react";
 import { 
   TMDBMovie, 
@@ -23,6 +24,7 @@ import {
   getBackdropUrl, 
   getImageUrl 
 } from "@/lib/tmdb/client";
+import { getNowPlayingCatalog, classifyCinemaMovie, NowPlayingCatalog } from "@/lib/services/cinema";
 import { useAuth } from "@/lib/context/AuthContext";
 import { useApp } from "@/lib/context/AppContext";
 import { MovieCard } from "@/components/movies/MovieCard";
@@ -38,6 +40,8 @@ export default function DashboardPage() {
   const [heroMovie, setHeroMovie] = useState<TMDBMovie | null>(null);
   const [trendingMovies, setTrendingMovies] = useState<TMDBMovie[]>([]);
   const [topRatedMovies, setTopRatedMovies] = useState<TMDBMovie[]>([]);
+  const [cinemaCatalog, setCinemaCatalog] = useState<NowPlayingCatalog | null>(null);
+  const [cinemaTab, setCinemaTab] = useState<"all" | "estrenos" | "reestrenos">("all");
   const [recentLogs, setRecentLogs] = useState<Log[]>([]);
   const [watchlistTitles, setWatchlistTitles] = useState<string[]>([]);
   const [userStats, setUserStats] = useState({
@@ -51,11 +55,16 @@ export default function DashboardPage() {
     async function loadDashboardData() {
       setLoading(true);
       try {
-        // 1. Fetch TMDB Trending & Top Rated
-        const [trendingRes, topRatedRes] = await Promise.all([
+        // 1. Fetch TMDB Trending, Top Rated & Cinema Now Playing
+        const [trendingRes, topRatedRes, cinemaData] = await Promise.all([
           getTrendingMovies("day"),
           getTopRatedMovies(1),
+          getNowPlayingCatalog(),
         ]);
+
+        if (cinemaData) {
+          setCinemaCatalog(cinemaData);
+        }
 
         if (trendingRes?.results?.length > 0) {
           // Hero movie: first trending with backdrop
@@ -125,6 +134,14 @@ export default function DashboardPage() {
 
     loadDashboardData();
   }, [user, isGuest, lastUpdated]);
+
+  const displayedCinemaMovies = (
+    cinemaTab === "estrenos"
+      ? cinemaCatalog?.estrenos || []
+      : cinemaTab === "reestrenos"
+      ? cinemaCatalog?.reestrenos || []
+      : cinemaCatalog?.all || []
+  ).filter((m) => !isBlacklisted(m.id));
 
   return (
     <div className="space-y-10">
@@ -240,6 +257,76 @@ export default function DashboardPage() {
           </div>
         </div>
       </section>
+
+      {/* Now Playing in Theaters Section (Estrenos & Reestrenos) */}
+      {cinemaCatalog && cinemaCatalog.all.length > 0 && (
+        <section className="space-y-4 p-5 sm:p-7 rounded-3xl bg-gradient-to-b from-[#161424] via-[#12111c] to-[#0d0c15] border border-white/10 shadow-2xl relative overflow-hidden">
+          {/* Ambient lighting glows */}
+          <div className="absolute top-0 right-0 w-80 h-80 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
+            <div>
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-xl bg-red-600/20 text-red-500 border border-red-500/30">
+                  <Ticket className="w-5 h-5" />
+                </div>
+                <h2 className="text-xl font-bold text-white tracking-tight">Actualmente en Cartelera</h2>
+              </div>
+              <p className="text-xs text-zinc-400 mt-1">
+                Películas en salas de cine ahora mismo: descubre nuevos estrenos y reestrenos legendarios
+              </p>
+            </div>
+
+            {/* Filter Tabs: Todos, Estrenos, Reestrenos */}
+            <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-black/50 border border-white/10 self-start sm:self-auto backdrop-blur-md">
+              <button
+                onClick={() => setCinemaTab("all")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                  cinemaTab === "all"
+                    ? "bg-white/20 text-white shadow-sm"
+                    : "text-zinc-400 hover:text-white"
+                }`}
+              >
+                Todos ({cinemaCatalog.all.length})
+              </button>
+              <button
+                onClick={() => setCinemaTab("estrenos")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                  cinemaTab === "estrenos"
+                    ? "bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md shadow-red-600/40"
+                    : "text-zinc-400 hover:text-red-400"
+                }`}
+              >
+                <Ticket className="w-3.5 h-3.5" />
+                <span>Estrenos ({cinemaCatalog.estrenos.length})</span>
+              </button>
+              <button
+                onClick={() => setCinemaTab("reestrenos")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                  cinemaTab === "reestrenos"
+                    ? "bg-gradient-to-r from-amber-500 to-yellow-400 text-black shadow-md shadow-amber-500/40 font-black"
+                    : "text-zinc-400 hover:text-amber-400"
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Reestrenos ({cinemaCatalog.reestrenos.length})</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Grid of movies */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5 sm:gap-4 relative z-10 pt-1">
+            {displayedCinemaMovies.slice(0, 6).map((movie) => (
+              <MovieCard
+                key={movie.id}
+                movie={movie}
+                cinemaStatus={classifyCinemaMovie(movie)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Trending Movies Carousel / Horizontal Slider */}
       <section className="space-y-4">

@@ -18,7 +18,8 @@ import {
   Check,
   MessageSquare,
   Building2,
-  Clapperboard
+  Clapperboard,
+  Ticket
 } from "lucide-react";
 import { 
   TMDBMovie, 
@@ -27,6 +28,7 @@ import {
   getBackdropUrl, 
   hasPostCreditsScene 
 } from "@/lib/tmdb/client";
+import { getNowPlayingStatusMap, CinemaStatus } from "@/lib/services/cinema";
 import { useApp } from "@/lib/context/AppContext";
 import { useAuth } from "@/lib/context/AuthContext";
 import { supabase } from "@/lib/supabase/client";
@@ -46,6 +48,7 @@ export default function MovieDetailPage() {
   const [reviews, setReviews] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
   const [inWatchlist, setInWatchlist] = useState(false);
+  const [cinemaStatus, setCinemaStatus] = useState<CinemaStatus | null>(null);
 
   useEffect(() => {
     if (!tmdbId) return;
@@ -60,6 +63,12 @@ export default function MovieDetailPage() {
         console.error("Movie details fetch error:", err);
       })
       .finally(() => setLoading(false));
+
+    // Check if in theaters
+    getNowPlayingStatusMap().then((map) => {
+      const s = map.get(tmdbId);
+      if (s) setCinemaStatus(s);
+    });
 
     // 2. Fetch community reviews from Supabase logs
     supabase
@@ -179,6 +188,22 @@ export default function MovieDetailPage() {
           {/* Details */}
           <div className="flex-1 min-w-0 space-y-4">
             <div>
+              {cinemaStatus && (
+                <div className="mb-3">
+                  {cinemaStatus === "estreno" ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black uppercase tracking-wider bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white shadow-lg shadow-red-600/40 border border-white/20">
+                      <Ticket className="w-3.5 h-3.5 text-white animate-pulse" />
+                      <span>En Cartelera Actualmente • Estreno en Cines</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black uppercase tracking-wider bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 text-black shadow-lg shadow-amber-500/40 border border-amber-300/50">
+                      <Sparkles className="w-3.5 h-3.5 text-black" />
+                      <span>En Cartelera Actualmente • Reestreno Especial</span>
+                    </span>
+                  )}
+                </div>
+              )}
+
               <div className="flex flex-wrap items-center gap-2 mb-2">
                 {movie.release_date && (
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-white/10 text-zinc-300">

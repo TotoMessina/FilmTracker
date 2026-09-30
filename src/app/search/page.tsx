@@ -19,7 +19,8 @@ import {
   Clock,
   Calendar,
   Layers,
-  Check
+  Check,
+  Ticket
 } from "lucide-react";
 import { 
   TMDBMovie, 
@@ -30,6 +31,7 @@ import {
   searchCompanies,
   getTrendingMovies, 
   getTopRatedMovies, 
+  getNowPlayingMovies,
   discoverMovies,
   MOVIE_GENRES,
   STREAMING_PROVIDERS,
@@ -44,9 +46,11 @@ import { PersonCard } from "@/components/search/PersonCard";
 import { CompanyCard } from "@/components/search/CompanyCard";
 import { PersonDetailModal } from "@/components/search/PersonDetailModal";
 import { useApp } from "@/lib/context/AppContext";
+import { useAuth } from "@/lib/context/AuthContext";
+import { loadUserStreamingPlatforms } from "@/lib/services/streamingPlatforms";
 
 type SearchTab = "all" | "movies" | "people" | "studios";
-type DiscoveryMode = "search" | "discover" | "trending" | "top_rated";
+type DiscoveryMode = "search" | "discover" | "trending" | "top_rated" | "in_theaters";
 
 function SearchContent() {
   const searchParams = useSearchParams();
@@ -61,6 +65,33 @@ function SearchContent() {
   const initialPersonRole = (searchParams.get("role") as "cast" | "crew") || "crew";
 
   const { isBlacklisted } = useApp();
+  const { user } = useAuth();
+
+  // User's configured streaming platforms
+  const [userPlatforms, setUserPlatforms] = useState<number[]>([]);
+  const [onlyMyPlatforms, setOnlyMyPlatforms] = useState(false);
+
+  useEffect(() => {
+    let isCancelled = false;
+    async function fetchPlatforms() {
+      const list = await loadUserStreamingPlatforms(user?.id);
+      if (!isCancelled) {
+        setUserPlatforms(list);
+      }
+    }
+    fetchPlatforms();
+
+    const handlePlatformsChange = (e: any) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setUserPlatforms(e.detail);
+      }
+    };
+    window.addEventListener("filmtracker_platforms_changed", handlePlatformsChange);
+    return () => {
+      isCancelled = true;
+      window.removeEventListener("filmtracker_platforms_changed", handlePlatformsChange);
+    };
+  }, [user?.id]);
 
   // Mode and query
   const [searchQuery, setSearchQuery] = useState(initialQuery);
@@ -200,13 +231,20 @@ function SearchContent() {
 
         // 4. MOVIES MODE (Search, Discover, Trending, Top-Rated)
         let movieRes;
+        const watchProvidersParam = selectedProvider
+          ? String(selectedProvider)
+          : onlyMyPlatforms && userPlatforms.length > 0
+          ? userPlatforms.join("|")
+          : undefined;
 
         if (queryTrimmed && searchTab === "movies") {
           movieRes = await searchMovies(queryTrimmed, pageNum);
-        } else if (discoveryMode === "trending" && !selectedStudio && !selectedPerson) {
+        } else if (discoveryMode === "trending" && !selectedStudio && !selectedPerson && !watchProvidersParam) {
           movieRes = await getTrendingMovies("week", pageNum);
-        } else if (discoveryMode === "top_rated" && !selectedStudio && !selectedPerson) {
+        } else if (discoveryMode === "top_rated" && !selectedStudio && !selectedPerson && !watchProvidersParam) {
           movieRes = await getTopRatedMovies(pageNum);
+        } else if (discoveryMode === "in_theaters" && !selectedStudio && !selectedPerson && !watchProvidersParam) {
+          movieRes = await getNowPlayingMovies(pageNum);
         } else {
           // Discover with all filters
           const runtimeObj = RUNTIME_RANGES.find((r) => r.id === selectedRuntime);
@@ -214,7 +252,7 @@ function SearchContent() {
             page: pageNum,
             sortBy,
             genres: selectedGenre ? String(selectedGenre) : undefined,
-            watchProviders: selectedProvider ? String(selectedProvider) : undefined,
+            watchProviders: watchProvidersParam,
             year: selectedYear || undefined,
             decade: selectedDecade || undefined,
             minRating: selectedRating > 0 ? selectedRating : undefined,
@@ -254,6 +292,8 @@ function SearchContent() {
     discoveryMode,
     selectedGenre,
     selectedProvider,
+    onlyMyPlatforms,
+    userPlatforms,
     selectedStudio,
     selectedPerson,
     selectedRating,
@@ -294,19 +334,27 @@ function SearchContent() {
       } else {
         // Movies
         let movieRes;
+        const watchProvidersParam = selectedProvider
+          ? String(selectedProvider)
+          : onlyMyPlatforms && userPlatforms.length > 0
+          ? userPlatforms.join("|")
+          : undefined;
+
         if (queryTrimmed && searchTab === "movies") {
           movieRes = await searchMovies(queryTrimmed, nextPage);
-        } else if (discoveryMode === "trending") {
+        } else if (discoveryMode === "trending" && !selectedStudio && !selectedPerson && !watchProvidersParam) {
           movieRes = await getTrendingMovies("week", nextPage);
-        } else if (discoveryMode === "top_rated") {
+        } else if (discoveryMode === "top_rated" && !selectedStudio && !selectedPerson && !watchProvidersParam) {
           movieRes = await getTopRatedMovies(nextPage);
+        } else if (discoveryMode === "in_theaters" && !selectedStudio && !selectedPerson && !watchProvidersParam) {
+          movieRes = await getNowPlayingMovies(nextPage);
         } else {
           const runtimeObj = RUNTIME_RANGES.find((r) => r.id === selectedRuntime);
           movieRes = await discoverMovies({
             page: nextPage,
             sortBy,
             genres: selectedGenre ? String(selectedGenre) : undefined,
-            watchProviders: selectedProvider ? String(selectedProvider) : undefined,
+            watchProviders: watchProvidersParam,
             year: selectedYear || undefined,
             decade: selectedDecade || undefined,
             minRating: selectedRating > 0 ? selectedRating : undefined,
@@ -334,6 +382,7 @@ function SearchContent() {
   const clearFilters = () => {
     setSelectedGenre(null);
     setSelectedProvider(null);
+    setOnlyMyPlatforms(false);
     setSelectedStudio(null);
     setSelectedPerson(null);
     setSelectedRating(0);
@@ -347,6 +396,7 @@ function SearchContent() {
   const hasActiveFilters = Boolean(
     selectedGenre ||
     selectedProvider ||
+    (onlyMyPlatforms && userPlatforms.length > 0) ||
     selectedStudio ||
     selectedPerson ||
     selectedRating > 0 ||
@@ -360,6 +410,7 @@ function SearchContent() {
   const activeFilterCount = [
     selectedGenre !== null,
     selectedProvider !== null,
+    onlyMyPlatforms && userPlatforms.length > 0,
     selectedStudio !== null,
     selectedPerson !== null,
     selectedRating > 0,
@@ -532,6 +583,45 @@ function SearchContent() {
             <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
             <span>Mejor Calificadas</span>
           </button>
+
+          <button
+            onClick={() => {
+              setDiscoveryMode("in_theaters");
+              setOnlyMyPlatforms(false);
+              setSelectedProvider(null);
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition shrink-0 ${
+              discoveryMode === "in_theaters"
+                ? "bg-red-600/30 text-red-300 border border-red-500/40 font-bold shadow-md shadow-red-950/30"
+                : "text-zinc-400 hover:text-white hover:bg-white/5"
+            }`}
+          >
+            <Ticket className="w-3.5 h-3.5 text-red-400" />
+            <span>En Cines</span>
+          </button>
+
+          <button
+            onClick={() => {
+              if (userPlatforms.length === 0) {
+                if (user) {
+                  router.push(`/profile/${user.id}`);
+                } else {
+                  setIsFilterOpen(true);
+                }
+                return;
+              }
+              setOnlyMyPlatforms((prev) => !prev);
+              setSelectedProvider(null);
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition shrink-0 ${
+              onlyMyPlatforms
+                ? "bg-purple-600/30 text-purple-300 border border-purple-500/50 shadow-md shadow-purple-950/40 font-bold"
+                : "text-zinc-400 hover:text-white hover:bg-white/5"
+            }`}
+          >
+            <Tv className="w-3.5 h-3.5 text-purple-400" />
+            <span>Mis Plataformas {userPlatforms.length > 0 ? `(${userPlatforms.length})` : ""}</span>
+          </button>
         </div>
       )}
 
@@ -542,6 +632,16 @@ function SearchContent() {
             <Filter className="w-3 h-3 text-red-400" />
             Filtros activos:
           </span>
+
+          {onlyMyPlatforms && userPlatforms.length > 0 && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-purple-500/15 text-purple-300 border border-purple-500/30 text-xs font-medium">
+              <Tv className="w-3 h-3 text-purple-400" />
+              <span>En mis plataformas ({userPlatforms.length})</span>
+              <button onClick={() => setOnlyMyPlatforms(false)} className="hover:text-white">
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
 
           {selectedStudio && (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-blue-500/15 text-blue-300 border border-blue-500/30 text-xs font-medium">
@@ -698,27 +798,53 @@ function SearchContent() {
 
           {/* 2. Streaming Platforms */}
           <div className="space-y-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-              <Tv className="w-3.5 h-3.5 text-red-400" />
-              Plataformas de Streaming
-            </span>
-            <div className="flex flex-wrap gap-2">
-              {STREAMING_PROVIDERS.map((provider) => (
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                <Tv className="w-3.5 h-3.5 text-red-400" />
+                Plataformas de Streaming
+              </span>
+              {userPlatforms.length > 0 && (
                 <button
-                  key={provider.id}
-                  onClick={() =>
-                    setSelectedProvider(selectedProvider === provider.id ? null : provider.id)
-                  }
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold border transition flex items-center gap-2 ${
-                    selectedProvider === provider.id
-                      ? "bg-red-600/30 border-red-500 text-white"
-                      : "bg-white/5 border-white/10 text-zinc-400 hover:text-white hover:bg-white/10"
+                  onClick={() => {
+                    setOnlyMyPlatforms((prev) => !prev);
+                    setSelectedProvider(null);
+                  }}
+                  className={`text-[11px] font-semibold px-2 py-0.5 rounded-lg transition ${
+                    onlyMyPlatforms
+                      ? "bg-purple-600 text-white"
+                      : "text-purple-400 hover:text-purple-300 bg-purple-500/10 border border-purple-500/20"
                   }`}
                 >
-                  <Tv className="w-3.5 h-3.5" />
-                  <span>{provider.name}</span>
+                  {onlyMyPlatforms ? "Desactivar mis plataformas" : `Filtrar por mis plataformas (${userPlatforms.length})`}
                 </button>
-              ))}
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {STREAMING_PROVIDERS.map((provider) => {
+                const isUserPlatform = userPlatforms.includes(provider.id);
+                return (
+                  <button
+                    key={provider.id}
+                    onClick={() => {
+                      setOnlyMyPlatforms(false);
+                      setSelectedProvider(selectedProvider === provider.id ? null : provider.id);
+                    }}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold border transition flex items-center gap-2 ${
+                      selectedProvider === provider.id
+                        ? "bg-red-600/30 border-red-500 text-white"
+                        : isUserPlatform
+                        ? "bg-purple-500/10 border-purple-500/30 text-purple-300 hover:bg-purple-500/20"
+                        : "bg-white/5 border-white/10 text-zinc-400 hover:text-white hover:bg-white/10"
+                    }`}
+                  >
+                    <Tv className="w-3.5 h-3.5" />
+                    <span>{provider.name}</span>
+                    {isUserPlatform && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-purple-400" title="En tus suscripciones" />
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
 

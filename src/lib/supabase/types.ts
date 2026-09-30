@@ -5,6 +5,7 @@ export interface Profile {
   bio?: string | null;
   updated_at?: string | null;
   created_at?: string;
+  streaming_platforms?: number[] | null;
 }
 
 export interface MovieGenre {

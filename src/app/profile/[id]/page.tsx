@@ -28,6 +28,7 @@ import ProfileReviews from "@/components/profile/ProfileReviews";
 import ProfileStats from "@/components/profile/ProfileStats";
 import ProfileCollections from "@/components/profile/ProfileCollections";
 import { getUserCollections } from "@/lib/services/collections";
+import { StreamingPlatformsSelector } from "@/components/profile/StreamingPlatformsSelector";
 
 export default function UserProfilePage() {
   const params = useParams();
@@ -286,6 +287,13 @@ export default function UserProfilePage() {
           watchedInCinema={watchedInCinemaCount}
         />
       )}
+
+      {/* Streaming Platforms (Configurable by user, viewable by others) */}
+      <StreamingPlatformsSelector
+        userId={targetId}
+        isMe={isMe}
+        username={profile?.username}
+      />
 
       {/* Navigation Tabs Bar */}
       <div className="flex items-center gap-2 border-b border-white/5 pb-2 overflow-x-auto scrollbar-none">

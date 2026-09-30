@@ -183,6 +183,10 @@ export async function getTopRatedMovies(page: number = 1): Promise<TMDBResponse<
   return fetchTMDB<TMDBResponse<TMDBMovie>>("/movie/top_rated", { page });
 }
 
+export async function getNowPlayingMovies(page: number = 1, region?: string): Promise<TMDBResponse<TMDBMovie>> {
+  return fetchTMDB<TMDBResponse<TMDBMovie>>("/movie/now_playing", { page, region: region || undefined });
+}
+
 export async function getMovieDetails(id: number): Promise<TMDBMovie> {
   return fetchTMDB<TMDBMovie>(`/movie/${id}`, {
     append_to_response: "credits,watch/providers,keywords,videos,similar",
