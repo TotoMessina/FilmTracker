@@ -39,7 +39,7 @@ export function Navbar({ onToggleMobileMenu }: NavbarProps) {
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-white/10 bg-[#0a0a0f]/85 backdrop-blur-xl transition-all pt-[env(safe-area-inset-top,0px)]">
-      <div className="flex h-16 items-center justify-between px-3 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+      <div className="flex h-16 items-center justify-between px-3 sm:px-6 lg:px-8 max-w-[1920px] mx-auto">
         {/* Left: Mobile Toggle + Logo */}
         <div className="flex items-center gap-2 sm:gap-3">
           {onToggleMobileMenu && (

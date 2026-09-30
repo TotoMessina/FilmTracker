@@ -166,9 +166,9 @@ export default function MovieDetailPage() {
         </div>
 
         {/* Floating Content Box */}
-        <div className="relative px-6 sm:px-10 pb-8 -mt-36 sm:-mt-48 flex flex-col md:flex-row gap-6 items-start">
+        <div className="relative px-4 sm:px-10 pb-6 sm:pb-8 -mt-24 sm:-mt-48 flex flex-col md:flex-row gap-4 sm:gap-6 items-start">
           {/* Main Poster */}
-          <div className="w-36 sm:w-52 aspect-[2/3] rounded-2xl overflow-hidden shadow-2xl shrink-0 border-2 border-white/15 bg-zinc-900">
+          <div className="w-28 sm:w-52 aspect-[2/3] rounded-2xl overflow-hidden shadow-2xl shrink-0 border-2 border-white/15 bg-zinc-900">
             <img
               src={getImageUrl(movie.poster_path, "w500")}
               alt={movie.title}
@@ -196,7 +196,7 @@ export default function MovieDetailPage() {
                 </div>
               </div>
 
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight">
+              <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight">
                 {movie.title}
               </h1>
               {movie.original_title && movie.original_title !== movie.title && (

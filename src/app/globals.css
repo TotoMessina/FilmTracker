@@ -109,12 +109,20 @@ body {
 }
 
 /* Hide scrollbar for tabs / sliders */
-.no-scrollbar::-webkit-scrollbar {
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar {
   display: none;
 }
-.no-scrollbar {
+.no-scrollbar,
+.scrollbar-none {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* Ensure images always respect their container bounds */
+img, video {
+  max-width: 100%;
+  height: auto;
 }
 
 /* Hide Next.js development indicator badge/button */

@@ -38,7 +38,7 @@ export function MobileNav() {
             <Link
               key={item.href}
               href={item.href}
-              className={`relative flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-2xl min-h-[48px] transition-all duration-200 active:scale-90 ${
+              className={`relative flex flex-col items-center justify-center gap-1 py-1.5 px-2 xs:px-3 rounded-2xl min-h-[48px] transition-all duration-200 active:scale-90 ${
                 isActive 
                   ? "text-red-500 font-bold bg-red-600/10 shadow-inner" 
                   : "text-zinc-400 hover:text-white"

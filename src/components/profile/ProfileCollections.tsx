@@ -387,7 +387,7 @@ export function ProfileCollections({
                   Esta colección aún no tiene películas agregadas.
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-4">
                   {activeCollection.movies.map((m) => {
                     const year = m.release_date ? new Date(m.release_date).getFullYear() : null;
                     return (

@@ -939,7 +939,7 @@ function SearchContent() {
               <span>Películas encontradas ({visibleMovies.length})</span>
             </h2>
             {visibleMovies.length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 sm:gap-4">
                 {visibleMovies.map((movie) => (
                   <MovieCard key={movie.id} movie={movie} />
                 ))}
@@ -999,7 +999,7 @@ function SearchContent() {
           </div>
 
           {studios.length > 0 ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4">
               {studios.map((studio) => (
                 <CompanyCard
                   key={studio.id}
@@ -1024,7 +1024,7 @@ function SearchContent() {
       {(searchTab === "movies" || (searchTab === "all" && !debouncedQuery.trim())) && (
         <div className="space-y-6">
           {visibleMovies.length > 0 ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 sm:gap-4">
               {visibleMovies.map((movie) => (
                 <MovieCard key={movie.id} movie={movie} />
               ))}

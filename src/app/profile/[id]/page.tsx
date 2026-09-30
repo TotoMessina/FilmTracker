@@ -358,7 +358,7 @@ export default function UserProfilePage() {
               Este usuario aún no tiene películas en su diario.
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-4">
               {logs.map((log) => (
                 <Link
                   key={log.id}
@@ -412,7 +412,7 @@ export default function UserProfilePage() {
               La watchlist de este usuario está vacía.
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-4">
               {watchlist.map((item) => (
                 <Link
                   key={item.tmdb_id}

@@ -114,10 +114,16 @@ export function QuickRecommenderModal() {
 
       {/* Mini Chat / Recommendation Popover Modal */}
       {isOpen && (
-        <div
-          ref={containerRef}
-          className="fixed bottom-16 sm:bottom-24 inset-x-3 sm:inset-auto sm:right-6 sm:w-[440px] max-h-[82vh] sm:max-h-[660px] z-50 bg-[#0e0e18]/95 backdrop-blur-2xl border border-red-500/30 rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.85)] flex flex-col overflow-hidden animate-in slide-in-from-bottom-5 fade-in duration-250"
-        >
+        <>
+          {/* Backdrop on mobile for closing when tapping outside */}
+          <div 
+            className="sm:hidden fixed inset-0 bg-black/60 backdrop-blur-xs z-45 animate-in fade-in duration-200"
+            onClick={() => setIsOpen(false)}
+          />
+          <div
+            ref={containerRef}
+            className="fixed bottom-16 sm:bottom-24 inset-x-2.5 sm:inset-auto sm:right-6 sm:w-[440px] max-h-[82vh] sm:max-h-[660px] z-50 bg-[#0e0e18]/95 backdrop-blur-2xl border border-red-500/30 rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.85)] flex flex-col overflow-hidden animate-in slide-in-from-bottom-5 fade-in duration-250"
+          >
           {/* Header */}
           <div className="px-5 py-4 border-b border-white/10 bg-gradient-to-r from-red-600/15 via-rose-600/10 to-transparent flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2.5">
@@ -356,6 +362,7 @@ export function QuickRecommenderModal() {
             </button>
           </form>
         </div>
+        </>
       )}
     </>
   );
