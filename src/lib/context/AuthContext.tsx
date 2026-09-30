@@ -11,10 +11,15 @@ interface AuthContextType {
   loading: boolean;
   isGuest: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, username: string) => Promise<{ error: Error | null }>;
+  signUp: (
+    email: string,
+    password: string,
+    username: string
+  ) => Promise<{ error: Error | null; needsEmailConfirmation?: boolean }>;
   signOut: () => Promise<void>;
   enableGuestMode: () => void;
   refreshProfile: () => Promise<void>;
+  resendConfirmationEmail: (email: string) => Promise<{ error: Error | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -25,7 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [isGuest, setIsGuest] = useState(false);
 
-  const fetchProfile = async (userId: string) => {
+  const fetchProfile = async (userId: string, currentUser?: User | null) => {
     try {
       const { data, error } = await supabase
         .from("profiles")
@@ -36,12 +41,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!error && data) {
         setProfile(data as Profile);
       } else {
-        // Fallback profile if row is not created yet
-        setProfile({
+        const u = currentUser || user;
+        const meta = u?.user_metadata;
+        const fallbackUsername = meta?.username || (u?.email ? u.email.split("@")[0] : "Cinéfilo");
+        const fallbackAvatar = meta?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(fallbackUsername)}&background=e50914&color=fff`;
+
+        const fallback = {
           id: userId,
-          username: user?.email ? user.email.split("@")[0] : "Cinéfilo",
-          avatar_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.email || "User")}&background=e50914&color=fff`,
-        });
+          username: fallbackUsername,
+          avatar_url: fallbackAvatar,
+        };
+        setProfile(fallback);
+
+        // If authenticated session exists, ensure profile row is saved in Supabase
+        await supabase.from("profiles").upsert(fallback);
       }
     } catch {
       // Ignore network errors on init
@@ -70,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setProfile(null);
           } else {
             setUser(userData.user);
-            await fetchProfile(userData.user.id);
+            await fetchProfile(userData.user.id, userData.user);
           }
         } else {
           // Check if guest was active in localStorage
@@ -100,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(session.user);
           setIsGuest(false);
           localStorage.removeItem("filmtracker_guest_mode");
-          await fetchProfile(session.user.id);
+          await fetchProfile(session.user.id, session.user);
         } else {
           setUser(null);
           if (!isGuest) setProfile(null);
@@ -120,12 +133,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email,
         password,
       });
+
       if (error) return { error };
+
       if (data.user) {
         setUser(data.user);
         setIsGuest(false);
         localStorage.removeItem("filmtracker_guest_mode");
-        await fetchProfile(data.user.id);
+        await fetchProfile(data.user.id, data.user);
       }
       return { error: null };
     } catch (err: unknown) {
@@ -147,18 +162,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       });
 
-      if (error) return { error };
+      if (error) return { error, needsEmailConfirmation: false };
 
-      if (data.user) {
+      // In Supabase, if email confirmation is enabled, data.session is null
+      const needsEmailConfirmation = !data.session;
+
+      if (!needsEmailConfirmation && data.user) {
+        // Immediate login if email confirmation is disabled in Supabase project
         setUser(data.user);
-        // Ensure profile row exists
+        setIsGuest(false);
+        localStorage.removeItem("filmtracker_guest_mode");
         await supabase.from("profiles").upsert({
           id: data.user.id,
           username: username || email.split("@")[0],
           avatar_url: defaultAvatar,
         });
-        await fetchProfile(data.user.id);
+        await fetchProfile(data.user.id, data.user);
+      } else {
+        // Confirmation required: Do NOT treat as logged in
+        setUser(null);
+        setProfile(null);
+        setIsGuest(false);
+        localStorage.removeItem("filmtracker_guest_mode");
       }
+
+      return { error: null, needsEmailConfirmation };
+    } catch (err: unknown) {
+      return { error: err as Error, needsEmailConfirmation: false };
+    }
+  };
+
+  const resendConfirmationEmail = async (email: string) => {
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email,
+      });
+      if (error) return { error };
       return { error: null };
     } catch (err: unknown) {
       return { error: err as Error };
@@ -189,7 +229,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshProfile = async () => {
     if (user) {
-      await fetchProfile(user.id);
+      await fetchProfile(user.id, user);
     }
   };
 
@@ -205,6 +245,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signOut,
         enableGuestMode,
         refreshProfile,
+        resendConfirmationEmail,
       }}
     >
       {children}
