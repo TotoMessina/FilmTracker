@@ -1,0 +1,60 @@
+{
+  "id": "/",
+  "name": "FilmTracker — Diario y Red Social de Cine",
+  "short_name": "FilmTracker",
+  "description": "Tu diario de cine personal, watchlists compartidas con amigos, torneos cinematográficos y recomendaciones con IA.",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "window-controls-overlay", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "theme_color": "#0a0a0f",
+  "background_color": "#0a0a0f",
+  "lang": "es",
+  "dir": "ltr",
+  "categories": ["entertainment", "movies", "social", "lifestyle"],
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "192x192 256x256 384x384 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable.svg",
+      "sizes": "192x192 256x256 384x384 512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Diario de Películas",
+      "short_name": "Diario",
+      "description": "Ver películas que has visto recientemente",
+      "url": "/diary",
+      "icons": [{ "src": "/icons/icon.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Descubrir Películas",
+      "short_name": "Descubrir",
+      "description": "Explora el catálogo global y tendencias",
+      "url": "/search",
+      "icons": [{ "src": "/icons/icon.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Watchlist",
+      "short_name": "Watchlist",
+      "description": "Películas pendientes y compartidas",
+      "url": "/watchlist",
+      "icons": [{ "src": "/icons/icon.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "CineBuddy IA",
+      "short_name": "CineBuddy",
+      "description": "Asistente inteligente de cine",
+      "url": "/ai-chat",
+      "icons": [{ "src": "/icons/icon.svg", "sizes": "192x192" }]
+    }
+  ]
+}
