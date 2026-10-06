@@ -18,6 +18,7 @@ import { useAuth } from "@/lib/context/AuthContext";
 import { useApp } from "@/lib/context/AppContext";
 import { supabase } from "@/lib/supabase/client";
 import { getMovieDetails, getImageUrl, TMDBMovie } from "@/lib/tmdb/client";
+import AICoach from "@/components/awards/AICoach";
 
 interface Nominee {
   tmdb_id: number;
@@ -44,61 +45,50 @@ const OSCARS_EDITIONS: Record<number, SeasonEdition> = {
     year: 2026,
     edition: "98ª Edición",
     title: "Temporada de Premios 2026",
-    description: "Monitorea tu progreso antes de la gran noche del cine. ¿Cuántas de las candidatas has visto ya?",
+    description: "Monitorea tu progreso antes de la gran noche del cine. Candidatas y favoritas de 2025 compitiendo en la 98ª gala.",
     categories: [
       {
         name: "Mejor Película",
         nominees: [
-          { tmdb_id: 1064213, title: "Anora", nominationDetails: "Sean Baker" },
-          { tmdb_id: 1276843, title: "The Brutalist", nominationDetails: "Brady Corbet" },
-          { tmdb_id: 1233413, title: "Nickel Boys", nominationDetails: "RaMell Ross" },
-          { tmdb_id: 1225916, title: "A Complete Unknown", nominationDetails: "James Mangold" },
-          { tmdb_id: 1197306, title: "A Real Pain", nominationDetails: "Jesse Eisenberg" },
-          { tmdb_id: 974576, title: "Conclave", nominationDetails: "Edward Berger" },
-          { tmdb_id: 1241982, title: "Emilia Pérez", nominationDetails: "Jacques Audiard" },
-          { tmdb_id: 1111873, title: "September 5", nominationDetails: "Tim Fehlbaum" },
-          { tmdb_id: 1119494, title: "The Substance", nominationDetails: "Coralie Fargeat" },
-          { tmdb_id: 1152748, title: "Wicked", nominationDetails: "Jon M. Chu" },
+          { tmdb_id: 1054867, title: "One Battle After Another", nominationDetails: "Paul Thomas Anderson" },
+          { tmdb_id: 1233413, title: "Sinners", nominationDetails: "Ryan Coogler" },
+          { tmdb_id: 858024, title: "Hamnet", nominationDetails: "Chloé Zhao" },
+          { tmdb_id: 1062722, title: "Frankenstein", nominationDetails: "Guillermo del Toro" },
+          { tmdb_id: 701387, title: "Bugonia", nominationDetails: "Yorgos Lanthimos" },
+          { tmdb_id: 911430, title: "F1", nominationDetails: "Joseph Kosinski" },
+          { tmdb_id: 1317288, title: "Marty Supreme", nominationDetails: "Josh Safdie" },
+          { tmdb_id: 1220564, title: "The Secret Agent", nominationDetails: "Kleber Mendonça Filho" },
+          { tmdb_id: 1124566, title: "Sentimental Value", nominationDetails: "Joachim Trier" },
+          { tmdb_id: 1078605, title: "Weapons", nominationDetails: "Zach Cregger" },
         ],
       },
       {
         name: "Mejor Dirección",
         nominees: [
-          { tmdb_id: 1064213, title: "Sean Baker", nominationDetails: "Anora" },
-          { tmdb_id: 1276843, title: "Brady Corbet", nominationDetails: "The Brutalist" },
-          { tmdb_id: 1241982, title: "Jacques Audiard", nominationDetails: "Emilia Pérez" },
-          { tmdb_id: 1233413, title: "RaMell Ross", nominationDetails: "Nickel Boys" },
-          { tmdb_id: 1119494, title: "Coralie Fargeat", nominationDetails: "The Substance" },
+          { tmdb_id: 1054867, title: "Paul Thomas Anderson", nominationDetails: "One Battle After Another" },
+          { tmdb_id: 1233413, title: "Ryan Coogler", nominationDetails: "Sinners" },
+          { tmdb_id: 858024, title: "Chloé Zhao", nominationDetails: "Hamnet" },
+          { tmdb_id: 1062722, title: "Guillermo del Toro", nominationDetails: "Frankenstein" },
+          { tmdb_id: 701387, title: "Yorgos Lanthimos", nominationDetails: "Bugonia" },
         ],
       },
       {
         name: "Mejor Película Animada",
         nominees: [
-          { tmdb_id: 1029575, title: "The Wild Robot", nominationDetails: "DreamWorks Animation" },
-          { tmdb_id: 823219, title: "Flow", nominationDetails: "Gints Zilbalodis" },
-          { tmdb_id: 1195506, title: "Inside Out 2", nominationDetails: "Pixar Animation" },
-          { tmdb_id: 1064486, title: "Memoir of a Snail", nominationDetails: "Adam Elliot" },
-          { tmdb_id: 762441, title: "Wallace & Gromit: Vengeance Most Fowl", nominationDetails: "Aardman" },
-        ],
-      },
-      {
-        name: "Mejor Película Internacional",
-        nominees: [
-          { tmdb_id: 1241982, title: "Emilia Pérez", nominationDetails: "Francia" },
-          { tmdb_id: 823219, title: "Flow", nominationDetails: "Letonia" },
-          { tmdb_id: 1156593, title: "I'm Still Here", nominationDetails: "Brasil" },
-          { tmdb_id: 1208668, title: "The Girl With the Needle", nominationDetails: "Dinamarca/Polonia" },
-          { tmdb_id: 1084199, title: "The Seed of the Sacred Fig", nominationDetails: "Alemania" },
+          { tmdb_id: 1022787, title: "Elio", nominationDetails: "Pixar Animation Studios" },
+          { tmdb_id: 1084242, title: "Zootopia 2", nominationDetails: "Walt Disney Animation Studios" },
+          { tmdb_id: 1175942, title: "The Bad Guys 2", nominationDetails: "DreamWorks Animation" },
+          { tmdb_id: 774370, title: "Dog Man", nominationDetails: "Universal Pictures / DreamWorks" },
         ],
       },
       {
         name: "Mejor Guion Original",
         nominees: [
-          { tmdb_id: 1064213, title: "Anora", nominationDetails: "Sean Baker" },
-          { tmdb_id: 1197306, title: "A Real Pain", nominationDetails: "Jesse Eisenberg" },
-          { tmdb_id: 1241982, title: "Emilia Pérez", nominationDetails: "Jacques Audiard" },
-          { tmdb_id: 1111873, title: "September 5", nominationDetails: "Moritz Binder, Tim Fehlbaum" },
-          { tmdb_id: 1119494, title: "The Substance", nominationDetails: "Coralie Fargeat" },
+          { tmdb_id: 1233413, title: "Sinners", nominationDetails: "Ryan Coogler" },
+          { tmdb_id: 1078605, title: "Weapons", nominationDetails: "Zach Cregger" },
+          { tmdb_id: 1124566, title: "Sentimental Value", nominationDetails: "Eskil Vogt, Joachim Trier" },
+          { tmdb_id: 1220564, title: "The Secret Agent", nominationDetails: "Kleber Mendonça Filho" },
+          { tmdb_id: 701387, title: "Bugonia", nominationDetails: "Will Tracy" },
         ],
       },
     ],
@@ -107,7 +97,70 @@ const OSCARS_EDITIONS: Record<number, SeasonEdition> = {
     year: 2025,
     edition: "97ª Edición",
     title: "Oscars 2025",
-    description: "Revive las grandes nominadas y ganadoras de la temporada 2024-2025.",
+    description: "Revive las grandes nominadas y ganadoras de las películas estrenadas en 2024.",
+    categories: [
+      {
+        name: "Mejor Película",
+        nominees: [
+          { tmdb_id: 1064213, title: "Anora", nominationDetails: "Sean Baker", isWinner: true },
+          { tmdb_id: 1276843, title: "The Brutalist", nominationDetails: "Brady Corbet" },
+          { tmdb_id: 974576, title: "Conclave", nominationDetails: "Edward Berger" },
+          { tmdb_id: 1241982, title: "Emilia Pérez", nominationDetails: "Jacques Audiard" },
+          { tmdb_id: 1119494, title: "The Substance", nominationDetails: "Coralie Fargeat" },
+          { tmdb_id: 1152748, title: "Wicked", nominationDetails: "Jon M. Chu" },
+          { tmdb_id: 1225916, title: "A Complete Unknown", nominationDetails: "James Mangold" },
+          { tmdb_id: 1028196, title: "Nickel Boys", nominationDetails: "RaMell Ross" },
+          { tmdb_id: 693134, title: "Dune: Part Two", nominationDetails: "Denis Villeneuve" },
+          { tmdb_id: 1156593, title: "I'm Still Here", nominationDetails: "Walter Salles" },
+        ],
+      },
+      {
+        name: "Mejor Dirección",
+        nominees: [
+          { tmdb_id: 1064213, title: "Sean Baker", nominationDetails: "Anora", isWinner: true },
+          { tmdb_id: 1276843, title: "Brady Corbet", nominationDetails: "The Brutalist" },
+          { tmdb_id: 1241982, title: "Jacques Audiard", nominationDetails: "Emilia Pérez" },
+          { tmdb_id: 1119494, title: "Coralie Fargeat", nominationDetails: "The Substance" },
+          { tmdb_id: 1225916, title: "James Mangold", nominationDetails: "A Complete Unknown" },
+        ],
+      },
+      {
+        name: "Mejor Película Animada",
+        nominees: [
+          { tmdb_id: 823219, title: "Flow", nominationDetails: "Gints Zilbalodis", isWinner: true },
+          { tmdb_id: 1029575, title: "The Wild Robot", nominationDetails: "DreamWorks Animation" },
+          { tmdb_id: 1195506, title: "Inside Out 2", nominationDetails: "Pixar Animation" },
+          { tmdb_id: 1064486, title: "Memoir of a Snail", nominationDetails: "Adam Elliot" },
+          { tmdb_id: 762441, title: "Wallace & Gromit: Vengeance Most Fowl", nominationDetails: "Aardman" },
+        ],
+      },
+      {
+        name: "Mejor Película Internacional",
+        nominees: [
+          { tmdb_id: 1156593, title: "I'm Still Here", nominationDetails: "Brasil", isWinner: true },
+          { tmdb_id: 1241982, title: "Emilia Pérez", nominationDetails: "Francia" },
+          { tmdb_id: 823219, title: "Flow", nominationDetails: "Letonia" },
+          { tmdb_id: 1208668, title: "The Girl With the Needle", nominationDetails: "Dinamarca/Polonia" },
+          { tmdb_id: 1278263, title: "The Seed of the Sacred Fig", nominationDetails: "Alemania" },
+        ],
+      },
+      {
+        name: "Mejor Guion Original",
+        nominees: [
+          { tmdb_id: 1064213, title: "Anora", nominationDetails: "Sean Baker", isWinner: true },
+          { tmdb_id: 1197306, title: "A Real Pain", nominationDetails: "Jesse Eisenberg" },
+          { tmdb_id: 1241982, title: "Emilia Pérez", nominationDetails: "Jacques Audiard" },
+          { tmdb_id: 1111873, title: "September 5", nominationDetails: "Moritz Binder, Tim Fehlbaum" },
+          { tmdb_id: 1119494, title: "The Substance", nominationDetails: "Coralie Fargeat" },
+        ],
+      },
+    ],
+  },
+  2024: {
+    year: 2024,
+    edition: "96ª Edición",
+    title: "Oscars 2024",
+    description: "Revive las grandes nominadas y ganadoras de las películas estrenadas en 2023.",
     categories: [
       {
         name: "Mejor Película",
@@ -120,6 +173,16 @@ const OSCARS_EDITIONS: Record<number, SeasonEdition> = {
           { tmdb_id: 346698, title: "Barbie", nominationDetails: "Greta Gerwig" },
           { tmdb_id: 840430, title: "The Holdovers", nominationDetails: "Alexander Payne" },
           { tmdb_id: 666277, title: "Past Lives", nominationDetails: "Celine Song" },
+        ],
+      },
+      {
+        name: "Mejor Dirección",
+        nominees: [
+          { tmdb_id: 872585, title: "Christopher Nolan", nominationDetails: "Oppenheimer", isWinner: true },
+          { tmdb_id: 792307, title: "Yorgos Lanthimos", nominationDetails: "Poor Things" },
+          { tmdb_id: 466420, title: "Martin Scorsese", nominationDetails: "Killers of the Flower Moon" },
+          { tmdb_id: 915935, title: "Justine Triet", nominationDetails: "Anatomy of a Fall" },
+          { tmdb_id: 93562, title: "Jonathan Glazer", nominationDetails: "The Zone of Interest" },
         ],
       },
       {
@@ -152,28 +215,42 @@ export default function AwardsPage() {
 
   const [selectedYear, setSelectedYear] = useState<number>(2026);
   const [watchedTmdbIds, setWatchedTmdbIds] = useState<Set<number>>(new Set());
+  const [watchlistTitles, setWatchlistTitles] = useState<string[]>([]);
   const [movieDetails, setMovieDetails] = useState<Record<number, Partial<TMDBMovie>>>({});
   const [loading, setLoading] = useState(true);
 
   const activeSeason = OSCARS_EDITIONS[selectedYear] || OSCARS_EDITIONS[2026];
 
-  // 1. Load user logs to know which movies are already watched
+  // 1. Load user logs to know which movies are already watched and user's watchlist
   useEffect(() => {
     async function loadWatchedIds() {
       setLoading(true);
       try {
         if (user) {
-          const { data } = await supabase
-            .from("logs")
-            .select("tmdb_id")
-            .eq("user_id", user.id);
+          const [{ data: logsData }, { data: wlData }] = await Promise.all([
+            supabase
+              .from("logs")
+              .select("tmdb_id")
+              .eq("user_id", user.id),
+            supabase
+              .from("watchlist")
+              .select("title, movie:movies(title)")
+              .eq("user_id", user.id),
+          ]);
 
-          if (data) {
-            setWatchedTmdbIds(new Set(data.map((d) => d.tmdb_id)));
+          if (logsData) {
+            setWatchedTmdbIds(new Set(logsData.map((d) => d.tmdb_id)));
+          }
+          if (wlData) {
+            setWatchlistTitles(
+              wlData.map((item: any) => item.title || item.movie?.title).filter(Boolean)
+            );
           }
         } else if (isGuest) {
           const guestLogs = JSON.parse(localStorage.getItem("filmtracker_guest_logs") || "[]");
           setWatchedTmdbIds(new Set(guestLogs.map((l: any) => l.tmdb_id)));
+          const guestWl = JSON.parse(localStorage.getItem("filmtracker_guest_watchlist") || "[]");
+          setWatchlistTitles(guestWl.map((w: any) => w.title).filter(Boolean));
         }
       } catch (err) {
         console.warn("Awards error:", err);
@@ -253,7 +330,7 @@ export default function AwardsPage() {
         </p>
 
         {/* Edition Selector Pills */}
-        <div className="flex items-center justify-center gap-2 pt-2">
+        <div className="flex items-center justify-center flex-wrap gap-2 pt-2">
           <button
             onClick={() => setSelectedYear(2026)}
             className={`px-4 py-2 rounded-2xl text-xs font-bold transition flex items-center gap-2 ${
@@ -275,6 +352,17 @@ export default function AwardsPage() {
           >
             <Trophy className="w-3.5 h-3.5" />
             <span>Oscars 2025</span>
+          </button>
+          <button
+            onClick={() => setSelectedYear(2024)}
+            className={`px-4 py-2 rounded-2xl text-xs font-bold transition flex items-center gap-2 ${
+              selectedYear === 2024
+                ? "bg-amber-500 text-black shadow-lg shadow-amber-500/25"
+                : "bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10"
+            }`}
+          >
+            <Award className="w-3.5 h-3.5" />
+            <span>Oscars 2024</span>
           </button>
         </div>
       </div>
@@ -408,6 +496,19 @@ export default function AwardsPage() {
           </div>
         ))}
       </div>
+
+      {/* AI Awards Coach (Solo para usuarios autenticados) */}
+      {user && (
+        <div className="pt-2">
+          <AICoach
+            awardsName={`${activeSeason.title} (${activeSeason.edition})`}
+            categories={activeSeason.categories}
+            userWatchedIds={watchedTmdbIds}
+            watchlistTitles={watchlistTitles}
+            progressPercent={progressPercent}
+          />
+        </div>
+      )}
     </div>
   );
 }

@@ -11,7 +11,9 @@ import {
   Tv, 
   Sparkles,
   Calendar,
-  Layers
+  Layers,
+  Clapperboard,
+  ChevronRight,
 } from "lucide-react";
 import { useAuth } from "@/lib/context/AuthContext";
 import { supabase } from "@/lib/supabase/client";
@@ -69,6 +71,12 @@ export default function StatsPage() {
   }, [user, isGuest]);
 
   // Calculations
+  const currentYear = new Date().getFullYear();
+  const currentYearLogs = logs.filter((log) => {
+    const d = log.watched_at || log.created_at;
+    return d && new Date(d).getFullYear() === currentYear;
+  });
+
   const totalWatched = logs.length;
   const totalMinutes = logs.reduce((acc, log) => acc + (log.movie?.runtime || 105), 0);
   const totalHours = (totalMinutes / 60).toFixed(1);
@@ -314,6 +322,38 @@ export default function StatsPage() {
           })}
         </div>
       </div>
+
+      {/* Cine Wrapped Annual Promo Banner */}
+      {currentYearLogs.length > 0 && (
+        <div className="relative overflow-hidden p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-red-950 via-[#260e1d] to-amber-950 border border-amber-500/40 shadow-2xl">
+          {/* Animated Shimmer Effect */}
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full animate-[pulse_3s_infinite] pointer-events-none" />
+
+          <div className="relative flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+            <div className="space-y-2 max-w-xl">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold uppercase tracking-wider">
+                <Clapperboard className="w-3.5 h-3.5" />
+                <span>Edición Anual {currentYear} • IA</span>
+              </div>
+              <h3 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                🎬 Tu Cine Wrapped {currentYear} está listo
+              </h3>
+              <p className="text-sm sm:text-base text-zinc-300 leading-relaxed">
+                Descubrí tu año cinematográfico en una historia personalizada: tus horas, récords, géneros predilectos y momentos cumbre analizados con IA.
+              </p>
+            </div>
+
+            <Link
+              href="/wrapped"
+              className="px-6 py-3.5 rounded-2xl font-black text-sm bg-gradient-to-r from-amber-500 to-yellow-500 text-black hover:scale-105 active:scale-95 transition-all duration-300 shadow-xl shadow-amber-500/25 flex items-center gap-2 shrink-0"
+            >
+              <Sparkles className="w-4 h-4 text-black" />
+              <span>Ver mi Wrapped</span>
+              <ChevronRight className="w-4 h-4 text-black" />
+            </Link>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

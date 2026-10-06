@@ -17,6 +17,7 @@ import {
   MessageSquare,
   Sparkles,
   Bot,
+  Clapperboard,
 } from "lucide-react";
 import { useAuth } from "@/lib/context/AuthContext";
 import { useApp } from "@/lib/context/AppContext";
@@ -34,6 +35,7 @@ const NAV_ITEMS = [
   { href: "/social", label: "Comunidad", icon: Users },
   { href: "/chat", label: "Mensajes", icon: MessageSquare, hasBadge: true },
   { href: "/ai-chat", label: "CineBuddy IA", icon: Bot, isBeta: true, isDividerBefore: true },
+  { href: "/wrapped", label: "Cine Wrapped", icon: Clapperboard, badge: "2026" },
 ];
 
 export function Sidebar({ onCloseMobile }: { onCloseMobile?: () => void }) {
@@ -85,6 +87,12 @@ export function Sidebar({ onCloseMobile }: { onCloseMobile?: () => void }) {
                 {item.isBeta && (
                   <span className="px-1.5 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-500/20 text-amber-400 border border-amber-500/30">
                     BETA
+                  </span>
+                )}
+
+                {item.badge && (
+                  <span className="px-1.5 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    {item.badge}
                   </span>
                 )}
               </Link>
