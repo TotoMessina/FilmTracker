@@ -45,6 +45,7 @@ import { MovieCard } from "@/components/movies/MovieCard";
 import { PersonCard } from "@/components/search/PersonCard";
 import { CompanyCard } from "@/components/search/CompanyCard";
 import { PersonDetailModal } from "@/components/search/PersonDetailModal";
+import { SceneSearchModal } from "@/components/search/SceneSearchModal";
 import { useApp } from "@/lib/context/AppContext";
 import { useAuth } from "@/lib/context/AuthContext";
 import { loadUserStreamingPlatforms } from "@/lib/services/streamingPlatforms";
@@ -103,6 +104,7 @@ function SearchContent() {
 
   // Advanced Filters
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isSceneModalOpen, setIsSceneModalOpen] = useState(false);
   const [selectedGenre, setSelectedGenre] = useState<number | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<number | null>(null);
   const [selectedStudio, setSelectedStudio] = useState<{ id: number; name: string } | null>(
@@ -473,6 +475,17 @@ function SearchContent() {
               </button>
             )}
           </div>
+
+          {/* AI Scene Search Button */}
+          <button
+            onClick={() => setIsSceneModalOpen(true)}
+            className="flex items-center gap-2 px-3.5 sm:px-4 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-red-500/15 to-purple-500/15 border border-amber-500/30 text-amber-300 hover:text-white hover:border-amber-400 hover:bg-amber-500/25 transition text-xs sm:text-sm font-bold shadow-md shadow-amber-950/20 shrink-0 cursor-pointer"
+            title="Buscar película por descripción de una escena con IA"
+          >
+            <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+            <span className="hidden md:inline">Buscar por Escena (IA)</span>
+            <span className="md:hidden">Escena IA</span>
+          </button>
 
           {/* Filter Drawer Toggle Button */}
           <button
@@ -1195,6 +1208,12 @@ function SearchContent() {
           onFilterByPerson={handleFilterByPerson}
         />
       )}
+
+      {/* AI Scene Search Modal */}
+      <SceneSearchModal
+        isOpen={isSceneModalOpen}
+        onClose={() => setIsSceneModalOpen(false)}
+      />
     </div>
   );
 }
