@@ -60,6 +60,7 @@ export interface Log {
   format: string | null;
   company?: string | null;
   is_rewatch: boolean;
+  contains_spoilers?: boolean;
   custom_poster_path: string | null;
   created_at?: string;
   movie?: Movie;
@@ -154,3 +155,100 @@ export interface SharedWatchlist {
   members: SharedWatchlistMember[];
   movies: SharedWatchlistMovie[];
 }
+
+export type ChallengeConditionType = "decade" | "country" | "runtime" | "genre" | "director";
+
+export interface ChallengeCondition {
+  type: ChallengeConditionType;
+  value: any;
+}
+
+export interface MonthlyChallenge {
+  id: string;
+  title: string;
+  description: string;
+  targetCount: number;
+  currentCount: number;
+  condition: ChallengeCondition;
+  completed: boolean;
+  completedAt?: string | null;
+}
+
+export interface UserMonthlyChallenges {
+  id: string;
+  user_id: string;
+  month: string; // YYYY-MM
+  challenges: MonthlyChallenge[];
+  completed: boolean;
+  created_at: string;
+}
+
+export interface CineclubPollOption {
+  tmdb_id: number;
+  title: string;
+  poster_path?: string | null;
+  votes: string[]; // user_ids
+}
+
+export interface CineclubPoll {
+  id?: string;
+  club_id: string;
+  options: CineclubPollOption[];
+  active?: boolean;
+  created_at?: string;
+}
+
+export interface CineclubMember {
+  club_id: string;
+  user_id: string;
+  role: "admin" | "member";
+  has_watched: boolean;
+  user?: Profile;
+  joined_at?: string;
+}
+
+export interface CineclubMessage {
+  id: string;
+  club_id: string;
+  user_id: string;
+  message: string;
+  is_spoiler: boolean;
+  created_at: string;
+  user?: Profile;
+}
+
+export interface Cineclub {
+  id: string;
+  name: string;
+  description: string | null;
+  cover_url: string | null;
+  creator_id: string;
+  current_movie_tmdb_id: number | null;
+  voting_deadline: string | null;
+  discussion_date: string | null;
+  created_at: string;
+  current_movie?: {
+    tmdb_id: number;
+    title: string;
+    poster_path?: string | null;
+    backdrop_path?: string | null;
+    release_date?: string | null;
+    overview?: string | null;
+    vote_average?: number | null;
+    runtime?: number | null;
+  } | null;
+  creator?: Profile;
+  members?: CineclubMember[];
+  poll?: CineclubPoll | null;
+}
+
+export interface AwardsPrediction {
+  id: string;
+  user_id: string;
+  season_year: number;
+  predictions: Record<string, number>; // category name -> tmdb_id
+  score: number;
+  submitted_at: string;
+  user?: Profile;
+}
+

@@ -19,7 +19,8 @@ import {
   MessageSquare,
   Building2,
   Clapperboard,
-  Ticket
+  Ticket,
+  Zap
 } from "lucide-react";
 import { 
   TMDBMovie, 
@@ -35,6 +36,8 @@ import { supabase } from "@/lib/supabase/client";
 import { Log } from "@/lib/supabase/types";
 import { formatRuntime, formatDate, getRatingColor } from "@/lib/utils/formatting";
 import { MovieCard } from "@/components/movies/MovieCard";
+import { ReviewCard } from "@/components/social/ReviewCard";
+import { MoviePitchModal } from "@/components/movies/MoviePitchModal";
 
 export default function MovieDetailPage() {
   const params = useParams();
@@ -42,13 +45,15 @@ export default function MovieDetailPage() {
   const tmdbId = Number(params?.id);
 
   const { openLogModal, requireAuth } = useApp();
-  const { user } = useAuth();
+  const { user, isGuest } = useAuth();
 
   const [movie, setMovie] = useState<TMDBMovie | null>(null);
   const [reviews, setReviews] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
   const [inWatchlist, setInWatchlist] = useState(false);
   const [cinemaStatus, setCinemaStatus] = useState<CinemaStatus | null>(null);
+  const [userWatchedIds, setUserWatchedIds] = useState<Set<number>>(new Set());
+  const [isPitchModalOpen, setIsPitchModalOpen] = useState(false);
 
   useEffect(() => {
     if (!tmdbId) return;
@@ -94,8 +99,20 @@ export default function MovieDetailPage() {
         .then(({ data }) => {
           if (data) setInWatchlist(true);
         });
+
+      // Load all movies user has watched
+      supabase
+        .from("logs")
+        .select("tmdb_id")
+        .eq("user_id", user.id)
+        .then(({ data }) => {
+          if (data) setUserWatchedIds(new Set(data.map((d) => d.tmdb_id)));
+        });
+    } else if (isGuest) {
+      const guestLogs = JSON.parse(localStorage.getItem("filmtracker_guest_logs") || "[]");
+      setUserWatchedIds(new Set(guestLogs.map((l: any) => l.tmdb_id)));
     }
-  }, [tmdbId, user]);
+  }, [tmdbId, user, isGuest]);
 
   const handleToggleWatchlist = async () => {
     if (!movie) return;
@@ -286,6 +303,16 @@ export default function MovieDetailPage() {
                 {inWatchlist ? <Check className="w-4 h-4 text-emerald-400" /> : <Bookmark className="w-4 h-4" />}
                 <span>{inWatchlist ? "En tu Watchlist" : "Agregar a Watchlist"}</span>
               </button>
+
+              {/* Instant No-Spoilers Pitch Button */}
+              <button
+                onClick={() => setIsPitchModalOpen(true)}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-purple-500/15 border border-amber-500/35 hover:border-amber-400 text-amber-300 hover:text-white hover:bg-amber-500/25 text-xs sm:text-sm font-bold shadow-md shadow-amber-950/20 active:scale-95 transition cursor-pointer"
+                title="Pitch sin spoilers: ¿Por qué verla hoy?"
+              >
+                <Zap className="w-4 h-4 text-amber-400 fill-amber-400 animate-pulse" />
+                <span>¿Por qué verla hoy? ⚡</span>
+              </button>
             </div>
           </div>
         </div>
@@ -353,37 +380,15 @@ export default function MovieDetailPage() {
             </div>
 
             {reviews.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {reviews.map((rev) => (
-                  <div
+                  <ReviewCard
                     key={rev.id}
-                    className="p-5 rounded-2xl bg-[#141420] border border-white/5 space-y-3"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={rev.profile?.avatar_url || `https://ui-avatars.com/api/?name=${rev.profile?.username || "User"}&background=e50914&color=fff`}
-                          alt={rev.profile?.username || "Usuario"}
-                          className="w-8 h-8 rounded-full object-cover"
-                        />
-                        <div>
-                          <p className="text-sm font-bold text-white">{rev.profile?.username || "Cinéfilo"}</p>
-                          <p className="text-[11px] text-zinc-500">{formatDate(rev.watched_at)}</p>
-                        </div>
-                      </div>
-
-                      {rev.rating !== null && (
-                        <div className="flex items-center gap-1 font-bold text-sm">
-                          <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                          <span className={getRatingColor(rev.rating)}>{rev.rating}/10</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <p className="text-sm text-zinc-300 leading-relaxed italic">
-                      &ldquo;{rev.review}&rdquo;
-                    </p>
-                  </div>
+                    log={rev}
+                    currentUserId={user?.id}
+                    userWatchedIds={userWatchedIds}
+                    showMoviePoster={false}
+                  />
                 ))}
               </div>
             ) : (
@@ -473,6 +478,19 @@ export default function MovieDetailPage() {
           )}
         </div>
       </div>
+
+      {/* No-Spoilers Movie Pitch Modal */}
+      <MoviePitchModal
+        isOpen={isPitchModalOpen}
+        onClose={() => setIsPitchModalOpen(false)}
+        movie={movie ? {
+          title: movie.title,
+          year: movie.release_date ? movie.release_date.split("-")[0] : undefined,
+          director: director?.name,
+          genres: movie.genres?.map((g) => g.name),
+          poster_path: movie.poster_path,
+        } : null}
+      />
     </div>
   );
 }

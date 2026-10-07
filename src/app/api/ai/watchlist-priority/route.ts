@@ -92,7 +92,7 @@ Responde ÚNICAMENTE con un objeto JSON válido con este formato:
       completion = await groq.chat.completions.create({
         model: GROQ_MODEL_FAST,
         temperature: 0.4,
-        max_tokens: 700,
+        max_tokens: 1800,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: systemPrompt },
@@ -111,7 +111,7 @@ Responde ÚNICAMENTE con un objeto JSON válido con este formato:
         completion = await groq.chat.completions.create({
           model: "qwen/qwen3.8-27b",
           temperature: 0.4,
-          max_tokens: 700,
+          max_tokens: 1800,
           response_format: { type: "json_object" },
           messages: [
             { role: "system", content: systemPrompt },
@@ -123,7 +123,16 @@ Responde ÚNICAMENTE con un objeto JSON válido con este formato:
       }
     }
 
-    const rawContent = completion.choices[0]?.message?.content || "";
+    let rawContent = completion.choices[0]?.message?.content || "{}";
+    rawContent = rawContent.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+    if (rawContent.includes("```")) {
+      rawContent = rawContent.replace(/```(?:json)?\s*([\s\S]*?)\s*```/g, "$1").trim();
+    }
+    const b1 = rawContent.indexOf("{");
+    const b2 = rawContent.lastIndexOf("}");
+    if (b1 !== -1 && b2 > b1) {
+      rawContent = rawContent.substring(b1, b2 + 1);
+    }
 
     let parsed: any;
     try {

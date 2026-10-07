@@ -54,22 +54,27 @@ export function setStoredPlatforms(platforms: number[], userId?: string): void {
  */
 export async function loadUserStreamingPlatforms(userId?: string): Promise<number[]> {
   const local = getStoredPlatforms(userId);
-  if (!userId) return local;
+  if (!userId || userId.startsWith("guest")) return local;
 
   try {
     const { data, error } = await supabase
       .from("profiles")
       .select("streaming_platforms")
       .eq("id", userId)
-      .single();
+      .maybeSingle();
 
-    if (!error && data?.streaming_platforms && Array.isArray(data.streaming_platforms)) {
-      const dbPlatforms = data.streaming_platforms.map(Number);
+    if (!error && data && data.streaming_platforms !== undefined && data.streaming_platforms !== null) {
+      const raw = data.streaming_platforms;
+      const dbPlatforms: number[] = Array.isArray(raw)
+        ? raw.map(Number)
+        : typeof raw === "string"
+        ? JSON.parse(raw).map(Number)
+        : [];
       setStoredPlatforms(dbPlatforms, userId);
       return dbPlatforms;
     }
-  } catch {
-    // If column doesn't exist in Supabase yet, return local cache
+  } catch (err) {
+    console.warn("Error leyendo streaming_platforms de Supabase:", err);
   }
 
   return local;
@@ -78,17 +83,26 @@ export async function loadUserStreamingPlatforms(userId?: string): Promise<numbe
 /**
  * Saves platforms to Supabase profile and local storage
  */
-export async function saveUserStreamingPlatforms(platforms: number[], userId?: string): Promise<void> {
+export async function saveUserStreamingPlatforms(platforms: number[], userId?: string): Promise<boolean> {
   setStoredPlatforms(platforms, userId);
 
-  if (userId) {
+  if (userId && !userId.startsWith("guest")) {
     try {
-      await supabase
+      const { data, error } = await supabase
         .from("profiles")
         .update({ streaming_platforms: platforms })
-        .eq("id", userId);
+        .eq("id", userId)
+        .select("streaming_platforms");
+
+      if (error) {
+        console.warn("Supabase streaming_platforms update error:", error.message || error);
+        return false;
+      }
+      return true;
     } catch (err) {
       console.warn("Supabase streaming_platforms update warning (fallback to localStorage):", err);
+      return false;
     }
   }
+  return true;
 }

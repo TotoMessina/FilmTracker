@@ -74,22 +74,20 @@ function ChatContent() {
           } else if (list.length > 0) {
             setSelectedUser(list[0]);
           }
-        } else if (isGuest) {
-          // Demo contacts
-          const demoContacts: Profile[] = [
-            {
-              id: "demo-critico-1",
-              username: "Cinefilo_Pro",
-              avatar_url: "https://ui-avatars.com/api/?name=Cinefilo&background=e50914&color=fff",
-            },
-            {
-              id: "demo-critico-2",
-              username: "Sofia_Film",
-              avatar_url: "https://ui-avatars.com/api/?name=Sofia&background=d4af37&color=fff",
-            },
-          ];
-          setContacts(demoContacts);
-          setSelectedUser(demoContacts[0]);
+        } else {
+          // Fetch community profiles from Supabase database
+          const { data: others } = await supabase
+            .from("profiles")
+            .select("*")
+            .limit(10);
+          const list = (others || []) as Profile[];
+          setContacts(list);
+          if (targetUserIdParam) {
+            const target = list.find((c) => c.id === targetUserIdParam);
+            if (target) setSelectedUser(target);
+          } else if (list.length > 0) {
+            setSelectedUser(list[0]);
+          }
         }
       } catch (err) {
         console.warn("Chat contacts error:", err);
@@ -132,19 +130,8 @@ function ChatContent() {
 
           refreshUnreadCount();
         }
-      } else if (isGuest) {
-        // Demo mock messages
-        setMessages([
-          {
-            id: "msg-1",
-            sender_id: targetUser.id,
-            receiver_id: "guest-user-123",
-            content: `¡Hola! ¿Viste alguna buena película esta semana? Te recomiendo mirar el torneo eliminatorio.`,
-            is_read: true,
-            created_at: new Date(Date.now() - 3600000).toISOString(),
-          },
-        ]);
-        scrollToBottom();
+      } else {
+        setMessages([]);
       }
     }
 

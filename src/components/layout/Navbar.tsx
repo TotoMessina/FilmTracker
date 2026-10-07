@@ -13,7 +13,8 @@ import {
   LogOut, 
   Sparkles,
   Menu,
-  X
+  X,
+  Dices
 } from "lucide-react";
 import { useAuth } from "@/lib/context/AuthContext";
 import { useApp } from "@/lib/context/AppContext";
@@ -90,6 +91,16 @@ export function Navbar({ onToggleMobileMenu }: NavbarProps) {
             title="Buscar"
           >
             <Search className="w-5 h-5" />
+          </Link>
+
+          {/* Fast Pick / ¿Qué ver hoy? Button */}
+          <Link
+            href="/fast-pick"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 transition shadow-sm active:scale-95 shrink-0"
+            title="Modo No Sé Qué Ver (Decisor en 3 Clics)"
+          >
+            <Dices className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden sm:inline">¿Qué ver hoy?</span>
           </Link>
 
           {/* Quick Log Button */}

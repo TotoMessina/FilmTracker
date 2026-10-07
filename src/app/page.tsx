@@ -15,7 +15,8 @@ import {
   TrendingUp,
   Sparkles,
   Database,
-  Ticket
+  Ticket,
+  Brain,
 } from "lucide-react";
 import { 
   TMDBMovie, 
@@ -29,6 +30,8 @@ import { useAuth } from "@/lib/context/AuthContext";
 import { useApp } from "@/lib/context/AppContext";
 import { MovieCard } from "@/components/movies/MovieCard";
 import { AIRecommendations } from "@/components/movies/AIRecommendations";
+import { MonthlyChallengesCard } from "@/components/challenges/MonthlyChallengesCard";
+import { CommunityTrendingCarousel } from "@/components/home/CommunityTrendingCarousel";
 import { supabase } from "@/lib/supabase/client";
 import { Log } from "@/lib/supabase/types";
 import { formatRuntime, formatDate, getRatingColor } from "@/lib/utils/formatting";
@@ -258,6 +261,38 @@ export default function DashboardPage() {
         </div>
       </section>
 
+      {/* Monthly Challenges Section */}
+      <section>
+        <MonthlyChallengesCard logs={recentLogs} />
+      </section>
+
+      {/* CineQuiz Banner */}
+      <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-r from-red-950/40 via-[#141224] to-[#1a1228] p-5 sm:p-6 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-red-600 via-rose-600 to-amber-500 flex items-center justify-center text-white shadow-lg shadow-red-600/30 shrink-0">
+            <Brain className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-white text-base">CineQuiz: Trivia Personalizada</h3>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-red-600/20 text-red-400 border border-red-500/30 uppercase tracking-wider">
+                IA
+              </span>
+            </div>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              ¿Cuánto recordás de tus películas vistas? Poné a prueba tu memoria con preguntas únicas y conseguí tu título cinéfilo.
+            </p>
+          </div>
+        </div>
+        <Link
+          href="/trivia"
+          className="shrink-0 inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-white font-semibold text-xs transition hover:scale-105"
+        >
+          <span>Jugar Trivia</span>
+          <ChevronRight className="w-4 h-4" />
+        </Link>
+      </section>
+
       {/* Now Playing in Theaters Section (Estrenos & Reestrenos) */}
       {cinemaCatalog && cinemaCatalog.all.length > 0 && (
         <section className="space-y-4 p-5 sm:p-7 rounded-3xl bg-gradient-to-b from-[#161424] via-[#12111c] to-[#0d0c15] border border-white/10 shadow-2xl relative overflow-hidden">
@@ -327,6 +362,9 @@ export default function DashboardPage() {
           </div>
         </section>
       )}
+
+      {/* Community Trending Carousel */}
+      <CommunityTrendingCarousel />
 
       {/* Trending Movies Carousel / Horizontal Slider */}
       <section className="space-y-4">

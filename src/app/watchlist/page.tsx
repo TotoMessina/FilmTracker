@@ -14,7 +14,8 @@ import {
   X,
   Brain,
   Loader2,
-  Users
+  Users,
+  Zap
 } from "lucide-react";
 import { useAuth } from "@/lib/context/AuthContext";
 import { useApp } from "@/lib/context/AppContext";
@@ -25,6 +26,7 @@ import { getImageUrl } from "@/lib/tmdb/client";
 import { formatRuntime } from "@/lib/utils/formatting";
 import MoodPicker from "@/components/movies/MoodPicker";
 import SharedWatchlistsSection from "@/components/watchlist/SharedWatchlistsSection";
+import { MoviePitchModal } from "@/components/movies/MoviePitchModal";
 
 type RuntimeFilter = "all" | "90" | "120" | "180" | "240";
 
@@ -60,6 +62,15 @@ export default function WatchlistPage() {
 
   // Random Picked Movie Modal
   const [pickedMovie, setPickedMovie] = useState<WatchlistItem | null>(null);
+
+  // Pitch Modal State
+  const [pitchTargetMovie, setPitchTargetMovie] = useState<{
+    title: string;
+    year?: string | number;
+    director?: string;
+    genres?: string[];
+    poster_path?: string | null;
+  } | null>(null);
 
   useEffect(() => {
     async function fetchWatchlist() {
@@ -510,6 +521,20 @@ export default function WatchlistPage() {
                     </p>
                   </div>
 
+                  {/* Botón pitch sin spoilers */}
+                  <button
+                    onClick={() => {
+                      setPitchTargetMovie({
+                        title: item.title,
+                        poster_path: poster,
+                      });
+                    }}
+                    className="p-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 transition shrink-0 self-center"
+                    title="¿Por qué verla hoy? (Pitch sin spoilers)"
+                  >
+                    <Zap className="w-4 h-4 fill-amber-400 text-amber-400" />
+                  </button>
+
                   {/* Botón rápido para elegir/ver */}
                   <button
                     onClick={() => {
@@ -599,6 +624,23 @@ export default function WatchlistPage() {
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
+                          setPitchTargetMovie({
+                            title: item.title || "Película",
+                            year: movie?.release_date ? movie.release_date.slice(0, 4) : undefined,
+                            genres: (movie?.genres || []).map((g: any) => typeof g === "string" ? g : g?.name).filter(Boolean),
+                            poster_path: poster,
+                          });
+                        }}
+                        className="p-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition"
+                        title="¿Por qué verla hoy? (Pitch sin spoilers)"
+                      >
+                        <Zap className="w-4 h-4 fill-amber-400 text-amber-400" />
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
                           handleRemove(item.tmdb_id);
                         }}
                         className="p-1.5 rounded-xl bg-white/10 hover:bg-rose-950/60 hover:text-rose-400 text-zinc-400 border border-white/10 transition"
@@ -610,12 +652,29 @@ export default function WatchlistPage() {
                   </div>
                 </Link>
 
-                <div className="p-3">
-                  <Link href={`/movie/${item.tmdb_id}`}>
+                <div className="p-3 flex items-center justify-between gap-1.5">
+                  <Link href={`/movie/${item.tmdb_id}`} className="min-w-0 flex-1">
                     <h3 className="font-semibold text-sm text-zinc-100 line-clamp-1 hover:text-red-400 transition">
                       {item.title || "Película"}
                     </h3>
                   </Link>
+
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setPitchTargetMovie({
+                        title: item.title || "Película",
+                        year: movie?.release_date ? movie.release_date.slice(0, 4) : undefined,
+                        genres: (movie?.genres || []).map((g: any) => typeof g === "string" ? g : g?.name).filter(Boolean),
+                        poster_path: poster,
+                      });
+                    }}
+                    className="p-1 rounded-lg text-amber-400 hover:bg-amber-500/20 transition shrink-0"
+                    title="¿Por qué verla hoy?"
+                  >
+                    <Zap className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                  </button>
                 </div>
               </div>
             );
@@ -696,6 +755,13 @@ export default function WatchlistPage() {
       )}
         </>
       )}
+
+      {/* Pitch Sin Spoilers Modal */}
+      <MoviePitchModal
+        isOpen={!!pitchTargetMovie}
+        onClose={() => setPitchTargetMovie(null)}
+        movie={pitchTargetMovie}
+      />
     </div>
   );
 }

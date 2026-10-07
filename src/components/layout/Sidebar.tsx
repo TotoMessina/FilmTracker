@@ -18,21 +18,26 @@ import {
   Sparkles,
   Bot,
   Clapperboard,
+  Brain,
+  Dices,
 } from "lucide-react";
 import { useAuth } from "@/lib/context/AuthContext";
 import { useApp } from "@/lib/context/AppContext";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/fast-pick", label: "No Sé Qué Ver", icon: Dices, badge: "3 Clics" },
   { href: "/search", label: "Descubrir", icon: Compass },
   { href: "/diary", label: "Diario", icon: BookOpen },
   { href: "/watchlist", label: "Watchlist", icon: Bookmark },
   { href: "/stats", label: "Estadísticas", icon: BarChart3 },
-  { href: "/connections", label: "Conexiones", icon: Users2 },
+  { href: "/trivia", label: "CineQuiz", icon: Brain, badge: "Nuevo" },
+  { href: "/connections", label: "Conexiones", icon: Users2, badge: "Qué Ver" },
   { href: "/map", label: "Cine-Traveler", icon: Globe2 },
   { href: "/awards", label: "Premios", icon: Trophy },
   { href: "/tournament", label: "Mundial Cine", icon: Swords },
   { href: "/social", label: "Comunidad", icon: Users },
+  { href: "/clubs", label: "CineClubs", icon: Users2, badge: "Nuevo" },
   { href: "/chat", label: "Mensajes", icon: MessageSquare, hasBadge: true },
   { href: "/ai-chat", label: "CineBuddy IA", icon: Bot, isBeta: true, isDividerBefore: true },
   { href: "/wrapped", label: "Cine Wrapped", icon: Clapperboard, badge: "2026" },

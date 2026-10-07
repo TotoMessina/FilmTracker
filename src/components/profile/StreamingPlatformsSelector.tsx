@@ -11,6 +11,8 @@ import {
 } from "@/lib/services/streamingPlatforms";
 import { getImageUrl } from "@/lib/tmdb/client";
 
+import { useAuth } from "@/lib/context/AuthContext";
+
 interface StreamingPlatformsSelectorProps {
   userId?: string;
   isMe: boolean;
@@ -24,6 +26,9 @@ export function StreamingPlatformsSelector({
   username,
   onPlatformsChange,
 }: StreamingPlatformsSelectorProps) {
+  const { user } = useAuth();
+  const effectiveUserId = userId || user?.id;
+
   const [selectedPlatforms, setSelectedPlatforms] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -32,7 +37,7 @@ export function StreamingPlatformsSelector({
     let isCancelled = false;
     async function load() {
       setLoading(true);
-      const platforms = await loadUserStreamingPlatforms(userId);
+      const platforms = await loadUserStreamingPlatforms(effectiveUserId);
       if (!isCancelled) {
         setSelectedPlatforms(platforms);
         setLoading(false);
@@ -42,7 +47,7 @@ export function StreamingPlatformsSelector({
     return () => {
       isCancelled = true;
     };
-  }, [userId]);
+  }, [effectiveUserId]);
 
   const handleToggle = async (platformId: number) => {
     if (!isMe) return;
@@ -59,7 +64,7 @@ export function StreamingPlatformsSelector({
       onPlatformsChange(updated);
     }
 
-    await saveUserStreamingPlatforms(updated, userId);
+    await saveUserStreamingPlatforms(updated, effectiveUserId);
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2000);
   };

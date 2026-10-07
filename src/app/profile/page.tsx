@@ -10,8 +10,9 @@ export default function ProfileRedirectPage() {
   const router = useRouter();
 
   useEffect(() => {
+    const search = typeof window !== "undefined" ? window.location.search : "";
     if (user?.id) {
-      router.replace(`/profile/${user.id}`);
+      router.replace(`/profile/${user.id}${search}`);
     } else {
       router.replace("/auth");
     }

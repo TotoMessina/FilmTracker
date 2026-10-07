@@ -5,6 +5,91 @@ import { searchMovies } from "@/lib/tmdb/client";
 
 export const dynamic = "force-dynamic";
 
+function cleanAndParseJSON(raw: string): any {
+  let cleaned = raw.trim();
+  // Strip reasoning/think tags if model produced them
+  cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  // Strip code fences
+  if (cleaned.includes("```")) {
+    cleaned = cleaned.replace(/```(?:json)?\s*([\s\S]*?)\s*```/g, "$1").trim();
+  }
+  // Isolate outermost json object or array
+  const firstBrace = cleaned.indexOf("{");
+  const firstBracket = cleaned.indexOf("[");
+  let startIdx = -1;
+  let endIdx = -1;
+
+  if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+    startIdx = firstBrace;
+    endIdx = cleaned.lastIndexOf("}");
+  } else if (firstBracket !== -1) {
+    startIdx = firstBracket;
+    endIdx = cleaned.lastIndexOf("]");
+  }
+
+  if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+    cleaned = cleaned.substring(startIdx, endIdx + 1);
+  }
+
+  return JSON.parse(cleaned);
+}
+
+// Fallback recommendations if Groq is temporarily unavailable or reaches limit
+const CURATED_CANDIDATES = [
+  { title: "Arrival", year: 2016, genre: "Ciencia ficción", vibe: "Melancolía poética", reason: "Ciencia ficción profunda y reflexiva con un guion magistral sobre el tiempo y la comunicación humana." },
+  { title: "Ex Machina", year: 2014, genre: "Ciencia ficción", vibe: "Tensión psicológica", reason: "Un thriller minimalista e hipnótico sobre la inteligencia artificial y el libre albedrío." },
+  { title: "Whiplash", year: 2014, genre: "Drama", vibe: "Adrenalina pura", reason: "Una dirección virtuosa y actuaciones deslumbrantes en un relato implacable sobre la obsesión por la perfección." },
+  { title: "Mad Max: Fury Road", year: 2015, genre: "Acción", vibe: "Cinética visual", reason: "Una obra maestra de acción continua con ritmo implacable, diseño de arte sobrecogedor y maestría técnica." },
+  { title: "Parasite", year: 2019, genre: "Suspense", vibe: "Sátira brillante", reason: "Una comedia negra demoledora con giros imprevistos que radiografía la división social con brillantez." },
+  { title: "The Prestige", year: 2006, genre: "Misterio", vibe: "Intriga obsesiva", reason: "Un duelo de obsesiones con narrativa laberíntica y giros brillantes característicos de Christopher Nolan." },
+  { title: "Her", year: 2013, genre: "Romance", vibe: "Sensibilidad nostálgica", reason: "Una mirada conmovedora a la soledad urbana contemporánea y las conexiones humanas en la era digital." },
+  { title: "Blade Runner 2049", year: 2017, genre: "Ciencia ficción", vibe: "Poesía visual", reason: "Fotografía legendaria de Roger Deakins y atmósfera densa que expande el clásico con reverencia." },
+];
+
+async function generateFallbackRecommendations(
+  watchedTitlesSet: Set<string>,
+  topGenres: string[]
+): Promise<AIRecommendation[]> {
+  const filtered = CURATED_CANDIDATES.filter(
+    (c) => !watchedTitlesSet.has(c.title.toLowerCase())
+  );
+
+  const selected = filtered.slice(0, 5);
+
+  const enriched: AIRecommendation[] = await Promise.all(
+    selected.map(async (item) => {
+      let tmdbId: number | null = null;
+      let posterPath: string | null = null;
+      let backdropPath: string | null = null;
+
+      try {
+        const search = await searchMovies(item.title, 1);
+        if (search?.results && search.results.length > 0) {
+          const match = search.results[0];
+          tmdbId = match.id;
+          posterPath = match.poster_path;
+          backdropPath = match.backdrop_path;
+        }
+      } catch {
+        // ignore
+      }
+
+      return {
+        title: item.title,
+        year: item.year,
+        reason: item.reason,
+        vibe: item.vibe,
+        confidence: 94,
+        tmdb_id: tmdbId,
+        poster_path: posterPath,
+        backdrop_path: backdropPath,
+      };
+    })
+  );
+
+  return enriched;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -19,14 +104,15 @@ export async function POST(req: NextRequest) {
 
     // 1. Calculate topGenres (top 4 genres by frequency)
     const genreCounts: Record<string, number> = {};
-    // 2. Calculate avgRating
     let totalRating = 0;
     let ratingCount = 0;
-    // 3. Calculate favoriteActors (actors from cast_data appearing in most logs)
     const actorCounts: Record<string, number> = {};
+    const watchedTitlesSet = new Set<string>();
 
     logs.forEach((log: any) => {
-      // Genres
+      const title = log.title || log.movie?.title;
+      if (title) watchedTitlesSet.add(String(title).trim().toLowerCase());
+
       const genres: string[] = (
         log.genres ||
         log.movie?.genres ||
@@ -37,14 +123,12 @@ export async function POST(req: NextRequest) {
         genreCounts[genre] = (genreCounts[genre] || 0) + 1;
       });
 
-      // Rating
       const rating = typeof log.rating === "number" ? log.rating : null;
       if (rating !== null && !isNaN(rating)) {
         totalRating += rating;
         ratingCount += 1;
       }
 
-      // Actors
       const cast: any[] = log.cast_data || log.movie?.cast_data || [];
       cast.forEach((actor: any) => {
         const actorName = typeof actor === "string" ? actor : actor?.name;
@@ -52,6 +136,10 @@ export async function POST(req: NextRequest) {
           actorCounts[actorName] = (actorCounts[actorName] || 0) + 1;
         }
       });
+    });
+
+    (watchlistTitles || []).forEach((t: string) => {
+      if (t) watchedTitlesSet.add(String(t).trim().toLowerCase());
     });
 
     const topGenres = Object.entries(genreCounts)
@@ -67,107 +155,87 @@ export async function POST(req: NextRequest) {
       .slice(0, 5)
       .map(([name]) => name);
 
-    // Format watched movies list
     const watchedMoviesList = logs
+      .slice(0, 15)
       .map((l: any) => {
-        const title = l.title || l.movie?.title || "Película sin título";
+        const title = l.title || l.movie?.title || "Película";
         const rating =
           l.rating !== null && l.rating !== undefined ? `${l.rating}/10` : "sin calificar";
-        const rewatch = l.is_rewatch ? " (rewatch)" : "";
-        const platform = l.platform ? ` en ${l.platform}` : "";
-        return `- ${title} [Rating: ${rating}]${rewatch}${platform}`;
+        return `- ${title} [Rating: ${rating}]`;
       })
       .join("\n");
 
     const systemPrompt =
-      "Eres CineBot, el asistente de IA de FilmTracker, una app de diario cinematográfico al estilo Letterboxd. Tu misión es actuar como un crítico y curador de cine de nivel experto con un toque personal y cálido. Respondes SIEMPRE en español latinoamericano, tono conversacional pero culto. Eres apasionado del cine, conoces historia del cine, nuevas tendencias y cine de nicho. Tus respuestas son concisas, con personalidad y nunca genéricas. Nunca recomiendas algo que el usuario ya vio. Siempre explicas el POR QUÉ de cada recomendación basándote en el historial específico del usuario.";
+      "Eres CineBot, el curador de cine de FilmTracker. Tu estilo es cálido, apasionado y experto. Respondes SIEMPRE en español en formato JSON. Tus recomendaciones son precisas, concisas y personalizadas. Cada 'reason' debe ser conciso (máximo 1 o 2 oraciones directas) para garantizar una respuesta ágil y completa.";
 
-    const userPrompt = `Historial de películas vistas del usuario:
+    const userPrompt = `Historial reciente del usuario:
 ${watchedMoviesList}
 
-Estadísticas del perfil:
-- Géneros favoritos: ${topGenres.length > 0 ? topGenres.join(", ") : "Diversos"}
+Perfil:
+- Géneros favoritos: ${topGenres.length > 0 ? topGenres.join(", ") : "Cine variado"}
 - Rating promedio otorgado: ${avgRating}
-- Actores más frecuentes en su historial: ${favoriteActors.length > 0 ? favoriteActors.join(", ") : "Varios"}
-- Películas en su Watchlist (NO las recomiendes, ya las tiene agendadas): ${
-      watchlistTitles.length > 0 ? watchlistTitles.join(", ") : "Ninguna"
-    }
+${favoriteActors.length > 0 ? `- Actores frecuentes: ${favoriteActors.join(", ")}` : ""}
+- En Watchlist (no recomendar): ${watchlistTitles.slice(0, 10).join(", ") || "Ninguna"}
 
-Instrucciones:
-Recomienda exactamente 5 películas acordes a este gusto cinematográfico que el usuario no haya visto ni tenga en su watchlist.
-Responde ÚNICAMENTE con un objeto JSON válido con la propiedad "recommendations", que contenga un array de 5 objetos con la siguiente estructura exacta:
+Recomienda exactamente 5 películas que no estén en la lista anterior.
+Responde ÚNICAMENTE con este JSON:
 {
   "recommendations": [
     {
       "title": "Nombre de la película",
-      "year": 2023,
-      "reason": "Explicación detallada y personalizada de por qué encaja con sus gustos o películas que disfrutó",
-      "vibe": "Tono o sensación de la película (ej: Melancolía poética, Thriller electrizante, Comedia ácida)",
+      "year": 2019,
+      "reason": "Razón concisa de 1 o 2 oraciones conectando con su gusto.",
+      "vibe": "Tono (ej: Thriller electrizante)",
       "confidence": 95
     }
   ]
-}
-Asegúrate de que "confidence" sea un número entero entre 1 y 100.`;
+}`;
 
-    let completion;
-    try {
-      completion = await groq.chat.completions.create({
-        model: GROQ_MODEL_LARGE,
-        temperature: 0.7,
-        max_tokens: 800,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-      });
-    } catch (modelError: any) {
-      if (modelError?.status === 404 || modelError?.code === "model_not_found" || modelError?.message?.includes("does not exist")) {
-        console.warn(`[Groq AI] ${GROQ_MODEL_LARGE} no disponible en esta API key. Intentando con modelo alternativo compatible...`);
-        completion = await groq.chat.completions.create({
-          model: "qwen/qwen3.8-27b",
-          temperature: 0.7,
-          max_tokens: 800,
+    let recommendations: AIRecommendation[] = [];
+    const candidateModels = [GROQ_MODEL_LARGE, "openai/gpt-oss-120b", "openai/gpt-oss-20b"];
+
+    for (const modelToTry of candidateModels) {
+      try {
+        const completion = await groq.chat.completions.create({
+          model: modelToTry,
+          temperature: 0.6,
+          max_tokens: 2500, // Sufficient token headroom to avoid max_tokens validation failure
           response_format: { type: "json_object" },
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
           ],
         });
-      } else {
-        throw modelError;
+
+        const rawContent = completion.choices[0]?.message?.content || "";
+        if (rawContent) {
+          const parsedData = cleanAndParseJSON(rawContent);
+          const list = Array.isArray(parsedData)
+            ? parsedData
+            : parsedData.recommendations || [];
+
+          if (Array.isArray(list) && list.length > 0) {
+            recommendations = list;
+            break;
+          }
+        }
+      } catch (err: any) {
+        console.warn(`[AI Recommendations] Intento fallido con modelo ${modelToTry}:`, err?.message || err);
       }
     }
 
-    const rawContent = completion.choices[0]?.message?.content || "";
-
-    let parsedData: any;
-    try {
-      parsedData = JSON.parse(rawContent);
-    } catch (parseError) {
-      console.error("Error al parsear JSON de Groq:", parseError, "Respuesta cruda:", rawContent);
-      return NextResponse.json(
-        { error: "Error al procesar la respuesta de la IA. Formato JSON inválido." },
-        { status: 500 }
-      );
-    }
-
-    const recommendations: AIRecommendation[] = Array.isArray(parsedData)
-      ? parsedData
-      : parsedData.recommendations || [];
-
-    if (!Array.isArray(recommendations) || recommendations.length === 0) {
-      return NextResponse.json(
-        { error: "No se pudieron generar recomendaciones estructuradas." },
-        { status: 500 }
-      );
+    // Fallback if all models failed or empty
+    if (!recommendations || recommendations.length === 0) {
+      console.info("[AI Recommendations] Usando generador inteligente de respaldo");
+      const fallbackList = await generateFallbackRecommendations(watchedTitlesSet, topGenres);
+      return NextResponse.json(fallbackList, { status: 200 });
     }
 
     // Enrich recommendations with real TMDB movie posters, backdrops, and IDs
     const enrichedRecommendations: AIRecommendation[] = await Promise.all(
-      recommendations.map(async (rec) => {
+      recommendations.slice(0, 5).map(async (rec) => {
         try {
-          const searchRes = await searchMovies(rec.title);
+          const searchRes = await searchMovies(rec.title, 1);
           const match =
             searchRes?.results?.find((m) => {
               if (!rec.year || !m.release_date) return false;
@@ -200,9 +268,15 @@ Asegúrate de que "confidence" sea un número entero entre 1 y 100.`;
     });
   } catch (error: any) {
     console.error("Error en /api/ai/recommend:", error);
-    return NextResponse.json(
-      { error: error?.message || "Ocurrió un error inesperado al generar recomendaciones con IA." },
-      { status: 500 }
-    );
+    // Return friendly curated fallback rather than throwing a raw 400/500 into the UI
+    try {
+      const fallbackList = await generateFallbackRecommendations(new Set(), []);
+      return NextResponse.json(fallbackList, { status: 200 });
+    } catch {
+      return NextResponse.json(
+        { error: "No se pudieron generar recomendaciones en este momento." },
+        { status: 500 }
+      );
+    }
   }
 }

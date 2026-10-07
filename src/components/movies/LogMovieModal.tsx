@@ -16,6 +16,7 @@ import {
   Lock, 
   Users,
   AlertCircle,
+  AlertTriangle,
   Loader2
 } from "lucide-react";
 import { useApp } from "@/lib/context/AppContext";
@@ -29,7 +30,9 @@ import {
   hasPostCreditsScene 
 } from "@/lib/tmdb/client";
 import { checkAndUnlockBadges } from "@/lib/gamification/badges";
-import { Profile } from "@/lib/supabase/types";
+import { checkNewBadges, persistAndNotifyUnlockedBadges } from "@/lib/gamification/badgeChecker";
+import { checkAndUpdateMonthlyChallenges } from "@/lib/services/challenges";
+import { Profile, Log } from "@/lib/supabase/types";
 
 const PLATFORMS = [
   "Netflix",
@@ -62,6 +65,7 @@ export function LogMovieModal() {
   const [format, setFormat] = useState<string>("Normal");
   const [review, setReview] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
+  const [containsSpoilers, setContainsSpoilers] = useState<boolean>(false);
   const [customPosterPath, setCustomPosterPath] = useState<string | null>(null);
 
   // Alternative Posters Modal
@@ -91,6 +95,7 @@ export function LogMovieModal() {
       setWatchedAt(editingLog.watched_at || new Date().toISOString().split("T")[0]);
       setRating(editingLog.rating ?? 7.0);
       setIsRewatch(editingLog.is_rewatch || false);
+      setContainsSpoilers(Boolean(editingLog.contains_spoilers));
       setPlatform(editingLog.platform || "Netflix");
       setFormat(editingLog.format || "Normal");
       setReview(editingLog.review || "");
@@ -102,6 +107,7 @@ export function LogMovieModal() {
       setWatchedAt(new Date().toISOString().split("T")[0]);
       setRating(7.0);
       setIsRewatch(false);
+      setContainsSpoilers(false);
       setPlatform("Netflix");
       setFormat("Normal");
       setReview("");
@@ -229,6 +235,23 @@ export function LogMovieModal() {
       // 1. Guest Mode
       if (isGuest || !user) {
         const guestLogs = JSON.parse(localStorage.getItem("filmtracker_guest_logs") || "[]");
+        // Include director in cast_data if present in crew
+        const directorMember = movieDetails?.credits?.crew?.find(
+          (c: any) => c.job === "Director" || c.department === "Directing"
+        );
+        let guestCast = movieDetails?.credits?.cast?.slice(0, 10) || [];
+        if (directorMember && !guestCast.some((c: any) => c.name === directorMember.name)) {
+          guestCast = [
+            ...guestCast,
+            {
+              id: directorMember.id,
+              name: directorMember.name,
+              character: "Director",
+              profile_path: (directorMember as any).profile_path || null,
+            },
+          ];
+        }
+
         const newLog = {
           id: editingLog ? editingLog.id : `guest-log-${Date.now()}`,
           user_id: "guest-user-123",
@@ -240,19 +263,22 @@ export function LogMovieModal() {
           platform,
           format,
           is_rewatch: isRewatch,
+          contains_spoilers: containsSpoilers,
           custom_poster_path: customPosterPath,
           created_at: new Date().toISOString(),
           movie: {
             tmdb_id: tmdbId,
             title,
             poster_path: currentPoster,
+            backdrop_path: movieDetails?.backdrop_path || null,
             release_date: movieDetails?.release_date || null,
             runtime: movieDetails?.runtime || null,
             vote_average: movieDetails?.vote_average || null,
             overview: movieDetails?.overview || null,
             genres: movieDetails?.genres || null,
             production_countries: movieDetails?.production_countries || null,
-            cast_data: movieDetails?.credits?.cast?.slice(0, 10) || null,
+            production_companies: movieDetails?.production_companies || null,
+            cast_data: guestCast.length > 0 ? guestCast : null,
           },
         };
 
@@ -264,7 +290,25 @@ export function LogMovieModal() {
         }
 
         localStorage.setItem("filmtracker_guest_logs", JSON.stringify(updatedLogs));
-        triggerConfetti();
+
+        // Evaluate challenges
+        checkAndUpdateMonthlyChallenges("guest", newLog).then(({ newlyCompleted, allCompleted }) => {
+          if (newlyCompleted.length > 0 || allCompleted) {
+            triggerConfetti();
+          }
+        });
+
+        // Evaluate new badges for guests
+        const currentGuestBadges = JSON.parse(
+          localStorage.getItem("filmtracker_guest_badges") || "[]"
+        );
+        const newlyUnlockedBadges = checkNewBadges(updatedLogs, currentGuestBadges);
+        if (newlyUnlockedBadges.length > 0) {
+          persistAndNotifyUnlockedBadges(newlyUnlockedBadges, null);
+        } else {
+          triggerConfetti();
+        }
+
         onLogSaved();
         closeLogModal();
         return;
@@ -285,6 +329,22 @@ export function LogMovieModal() {
       }
 
       // Step A: Upsert movie in local cache
+      const directorMember = movieDetails?.credits?.crew?.find(
+        (c: any) => c.job === "Director" || c.department === "Directing"
+      );
+      let userCast = movieDetails?.credits?.cast?.slice(0, 10) || [];
+      if (directorMember && !userCast.some((c: any) => c.name === directorMember.name)) {
+        userCast = [
+          ...userCast,
+          {
+            id: directorMember.id,
+            name: directorMember.name,
+            character: "Director",
+            profile_path: (directorMember as any).profile_path || null,
+          },
+        ];
+      }
+
       const { error: movieError } = await supabase.from("movies").upsert({
         tmdb_id: tmdbId,
         title,
@@ -295,7 +355,7 @@ export function LogMovieModal() {
         genres: movieDetails?.genres || [],
         production_countries: movieDetails?.production_countries || [],
         production_companies: movieDetails?.production_companies || [],
-        cast_data: movieDetails?.credits?.cast?.slice(0, 10) || [],
+        cast_data: userCast,
         vote_average: movieDetails?.vote_average || null,
         overview: movieDetails?.overview || null,
         updated_at: new Date().toISOString(),
@@ -318,6 +378,7 @@ export function LogMovieModal() {
             platform,
             format,
             is_rewatch: isRewatch,
+            contains_spoilers: containsSpoilers,
             custom_poster_path: customPosterPath,
           })
           .eq("id", editingLog.id);
@@ -336,6 +397,7 @@ export function LogMovieModal() {
             platform,
             format,
             is_rewatch: isRewatch,
+            contains_spoilers: containsSpoilers,
             custom_poster_path: customPosterPath,
           })
           .select("id")
@@ -357,9 +419,57 @@ export function LogMovieModal() {
         await supabase.from("log_companions").insert(companionRows);
       }
 
-      // Step D: Unlock badges async
-      checkAndUnlockBadges(activeUserId).then((newBadges) => {
-        if (newBadges.length > 0) {
+      const savedLogObj: Log = {
+        id: logId || `log-${Date.now()}`,
+        user_id: activeUserId,
+        tmdb_id: tmdbId,
+        watched_at: watchedAt ? new Date(watchedAt).toISOString() : new Date().toISOString(),
+        rating: rating > 0 ? rating : null,
+        review: review.trim() || null,
+        notes: notes.trim() || null,
+        platform: platform || null,
+        format: format || null,
+        is_rewatch: isRewatch,
+        contains_spoilers: containsSpoilers,
+        custom_poster_path: customPosterPath || null,
+        movie: {
+          tmdb_id: tmdbId,
+          title,
+          poster_path: movieDetails?.poster_path || activeLogMovie.poster_path,
+          backdrop_path: movieDetails?.backdrop_path || null,
+          release_date: movieDetails?.release_date || null,
+          runtime: movieDetails?.runtime || null,
+          genres: movieDetails?.genres || [],
+          production_countries: movieDetails?.production_countries || [],
+          production_companies: movieDetails?.production_companies || [],
+          cast_data: userCast,
+          vote_average: movieDetails?.vote_average || null,
+          overview: movieDetails?.overview || null,
+        },
+      };
+
+      // Step D: Unlock badges async & notify
+      supabase
+        .from("user_badges")
+        .select("badge_code")
+        .eq("user_id", activeUserId)
+        .then(({ data: userBadges }) => {
+          const existing = new Set((userBadges || []).map((b: any) => b.badge_code));
+          supabase
+            .from("logs")
+            .select("*, movie:movies(*)")
+            .eq("user_id", activeUserId)
+            .then(({ data: allUserLogs }) => {
+              const fullLogs = (allUserLogs as Log[]) || [savedLogObj];
+              const unlocked = checkNewBadges(fullLogs, existing);
+              if (unlocked.length > 0) {
+                persistAndNotifyUnlockedBadges(unlocked, activeUserId);
+              }
+            });
+        });
+
+      checkAndUpdateMonthlyChallenges(activeUserId, savedLogObj).then(({ newlyCompleted, allCompleted }) => {
+        if (newlyCompleted.length > 0 || allCompleted) {
           triggerConfetti();
         }
       });
@@ -635,6 +745,26 @@ export function LogMovieModal() {
               rows={3}
               className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder-zinc-500 focus:outline-none focus:border-red-500"
             />
+
+            {/* Toggle: Contiene Spoilers ⚠️ */}
+            <div className="pt-1">
+              <label
+                className={`inline-flex items-center gap-2 cursor-pointer text-xs font-bold transition select-none px-3 py-1.5 rounded-xl border ${
+                  containsSpoilers
+                    ? "bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm shadow-amber-950/20"
+                    : "bg-white/5 text-zinc-400 hover:text-white border-white/10"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={containsSpoilers}
+                  onChange={(e) => setContainsSpoilers(e.target.checked)}
+                  className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 bg-white/10 border-white/20 accent-amber-500 cursor-pointer"
+                />
+                <AlertTriangle className={`w-3.5 h-3.5 ${containsSpoilers ? "text-amber-400" : "text-zinc-500"}`} />
+                <span>Contiene Spoilers ⚠️</span>
+              </label>
+            </div>
           </div>
 
           {/* Private Notes */}

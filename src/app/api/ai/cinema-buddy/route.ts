@@ -65,7 +65,7 @@ PERSONALIDAD Y ESTILO:
       streamResponse = await groq.chat.completions.create({
         model: GROQ_MODEL_LARGE,
         temperature: 0.7,
-        max_tokens: 800,
+        max_tokens: 2000,
         messages: fullMessages,
         stream: true,
       });
@@ -81,7 +81,7 @@ PERSONALIDAD Y ESTILO:
         streamResponse = await groq.chat.completions.create({
           model: "qwen/qwen3.8-27b",
           temperature: 0.7,
-          max_tokens: 800,
+          max_tokens: 2000,
           messages: fullMessages,
           stream: true,
         });

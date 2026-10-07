@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { 
   Film, 
   Clock, 
@@ -13,16 +13,35 @@ import {
   Sparkles,
   PieChart,
   BarChart3,
-  Users
+  Users,
+  Layers
 } from "lucide-react";
 import { Log } from "@/lib/supabase/types";
 import { getPlatformBadge, getRatingColor } from "@/lib/utils/formatting";
+import { MovieGridShareModal } from "./MovieGridShareModal";
 
 interface ProfileStatsProps {
   logs: Log[];
 }
 
 export function ProfileStats({ logs }: ProfileStatsProps) {
+  const [isGridModalOpen, setIsGridModalOpen] = useState(false);
+
+  const topMoviesForGrid = useMemo(() => {
+    const sorted = [...logs].sort((a, b) => {
+      const rA = typeof a.rating === "number" ? a.rating : 0;
+      const rB = typeof b.rating === "number" ? b.rating : 0;
+      if (rB !== rA) return rB - rA;
+      return new Date(b.watched_at || 0).getTime() - new Date(a.watched_at || 0).getTime();
+    });
+
+    return sorted.slice(0, 9).map((l) => ({
+      title: l.movie?.title || "Película",
+      poster_path: l.movie?.poster_path || null,
+      rating: typeof l.rating === "number" ? l.rating : undefined,
+    }));
+  }, [logs]);
+
   const stats = useMemo(() => {
     const totalMovies = logs.length;
     let totalMinutes = 0;
@@ -182,6 +201,26 @@ export function ProfileStats({ logs }: ProfileStatsProps) {
 
   return (
     <div className="space-y-6">
+      {/* Collage for Socials CTA banner */}
+      <div className="flex flex-col sm:flex-row items-center justify-between p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-red-950/30 via-purple-950/20 to-zinc-900 border border-white/10 gap-4 shadow-xl">
+        <div className="flex items-center gap-3 text-center sm:text-left">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-red-600 to-purple-600 flex items-center justify-center text-white shrink-0 shadow-lg">
+            <Layers className="w-5 h-5" />
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-white">Collage Cinéfilo para Redes</h4>
+            <p className="text-xs text-zinc-400">Exportá tu Top 9 de películas en resolución 1080p para Instagram Stories o Twitter.</p>
+          </div>
+        </div>
+        <button
+          onClick={() => setIsGridModalOpen(true)}
+          className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-purple-600 hover:from-red-500 hover:to-purple-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition active:scale-95 shadow-md shadow-red-600/25 cursor-pointer"
+        >
+          <Sparkles className="w-4 h-4" />
+          <span>Generar Collage 📸</span>
+        </button>
+      </div>
+
       {/* 1. Main Highlights Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-4">
         {/* Total Movies */}
@@ -431,6 +470,15 @@ export function ProfileStats({ logs }: ProfileStatsProps) {
           )}
         </div>
       </div>
+
+      {/* Movie Grid Share Modal */}
+      <MovieGridShareModal
+        isOpen={isGridModalOpen}
+        onClose={() => setIsGridModalOpen(false)}
+        title="Mis 9 Películas Favoritas"
+        subtitle="Top Estadístico • FilmTracker 2026"
+        movies={topMoviesForGrid}
+      />
     </div>
   );
 }

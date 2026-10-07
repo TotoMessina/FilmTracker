@@ -91,7 +91,7 @@ Nota: Pon perfect_match en true si encaja a la perfección con el mood, o false 
       completion = await groq.chat.completions.create({
         model: GROQ_MODEL_FAST,
         temperature: 0.6,
-        max_tokens: 400,
+        max_tokens: 1500,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: systemPrompt },
@@ -110,7 +110,7 @@ Nota: Pon perfect_match en true si encaja a la perfección con el mood, o false 
         completion = await groq.chat.completions.create({
           model: "qwen/qwen3.8-27b",
           temperature: 0.6,
-          max_tokens: 400,
+          max_tokens: 1500,
           response_format: { type: "json_object" },
           messages: [
             { role: "system", content: systemPrompt },
@@ -122,7 +122,16 @@ Nota: Pon perfect_match en true si encaja a la perfección con el mood, o false 
       }
     }
 
-    const rawContent = completion.choices[0]?.message?.content || "";
+    let rawContent = completion.choices[0]?.message?.content || "{}";
+    rawContent = rawContent.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+    if (rawContent.includes("```")) {
+      rawContent = rawContent.replace(/```(?:json)?\s*([\s\S]*?)\s*```/g, "$1").trim();
+    }
+    const b1 = rawContent.indexOf("{");
+    const b2 = rawContent.lastIndexOf("}");
+    if (b1 !== -1 && b2 > b1) {
+      rawContent = rawContent.substring(b1, b2 + 1);
+    }
 
     let parsed: any;
     try {

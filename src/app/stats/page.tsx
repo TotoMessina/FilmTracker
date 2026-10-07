@@ -14,11 +14,13 @@ import {
   Layers,
   Clapperboard,
   ChevronRight,
+  Lock,
 } from "lucide-react";
 import { useAuth } from "@/lib/context/AuthContext";
 import { supabase } from "@/lib/supabase/client";
 import { Log, UserBadge } from "@/lib/supabase/types";
 import { ALL_BADGES } from "@/lib/gamification/badges";
+import { MonthlyChallengesCard } from "@/components/challenges/MonthlyChallengesCard";
 import { formatRuntime, formatDate, getRatingColor } from "@/lib/utils/formatting";
 
 export default function StatsPage() {
@@ -26,6 +28,7 @@ export default function StatsPage() {
 
   const [logs, setLogs] = useState<Log[]>([]);
   const [unlockedBadges, setUnlockedBadges] = useState<Set<string>>(new Set());
+  const [badgeCategory, setBadgeCategory] = useState<string>("all");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -55,10 +58,16 @@ export default function StatsPage() {
         } else if (isGuest) {
           const guestLogs = JSON.parse(localStorage.getItem("filmtracker_guest_logs") || "[]");
           setLogs(guestLogs);
-          // Unlock default starter badge if has logs
-          if (guestLogs.length >= 1) {
-            setUnlockedBadges(new Set(["NEWBIE"]));
-          }
+          const guestBadgesStored = JSON.parse(
+            localStorage.getItem("filmtracker_guest_badges") || "[]"
+          );
+          const unlockedSet = new Set<string>(guestBadgesStored);
+          ALL_BADGES.forEach((b) => {
+            if (b.check(guestLogs)) {
+              unlockedSet.add(b.code);
+            }
+          });
+          setUnlockedBadges(unlockedSet);
         }
       } catch (err) {
         console.warn("Stats load error:", err);
@@ -68,6 +77,15 @@ export default function StatsPage() {
     }
 
     fetchStatsData();
+
+    // Listen for live badge updates
+    const handleBadgesUpdated = () => {
+      fetchStatsData();
+    };
+    window.addEventListener("filmtracker_badges_updated", handleBadgesUpdated);
+    return () => {
+      window.removeEventListener("filmtracker_badges_updated", handleBadgesUpdated);
+    };
   }, [user, isGuest]);
 
   // Calculations
@@ -271,51 +289,168 @@ export default function StatsPage() {
         </div>
       </div>
 
+      {/* Monthly Challenges Section */}
+      <MonthlyChallengesCard logs={logs} />
+
       {/* Gamification Achievements / Badges Section */}
-      <div className="space-y-4 pt-4 border-t border-white/5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Award className="w-5 h-5 text-amber-400" />
-            <h2 className="text-xl font-bold text-white tracking-tight">Logros Cinéfilos</h2>
+      <div className="space-y-6 pt-4 border-t border-white/5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <Award className="w-5 h-5 text-amber-400" />
+              <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                Logros Cinéfilos
+              </h2>
+            </div>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Desbloqueá insignias completando filmografías de directores, maratones, décadas y hitos cinéfilos.
+            </p>
           </div>
-          <span className="text-xs font-bold text-amber-400 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30">
-            {unlockedBadges.size} de {ALL_BADGES.length} Desbloqueados
-          </span>
+
+          <div className="flex items-center gap-2">
+            <Link
+              href="/trivia"
+              className="text-xs font-bold text-zinc-300 hover:text-white px-3.5 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition inline-flex items-center gap-1.5 shadow-sm"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>CineQuiz</span>
+            </Link>
+            <span className="text-xs font-bold text-amber-400 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 shadow-sm">
+              {unlockedBadges.size} de {ALL_BADGES.length} Desbloqueados
+            </span>
+          </div>
         </div>
 
+        {/* Badges Progress Bar */}
+        <div className="p-4 rounded-2xl bg-[#141422] border border-white/5 space-y-2 shadow-inner">
+          <div className="flex items-center justify-between text-xs font-bold">
+            <span className="text-zinc-400">Progreso Total de Colección</span>
+            <span className="text-amber-400">
+              {Math.round((unlockedBadges.size / (ALL_BADGES.length || 1)) * 100)}%
+            </span>
+          </div>
+          <div className="w-full h-2.5 rounded-full bg-zinc-800 overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-amber-500 via-rose-500 to-red-500 transition-all duration-500 rounded-full"
+              style={{
+                width: `${(unlockedBadges.size / (ALL_BADGES.length || 1)) * 100}%`,
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Category Filter Tabs */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs font-semibold">
+          {[
+            { id: "all", label: "Todos", count: ALL_BADGES.length },
+            {
+              id: "director",
+              label: "Directores",
+              count: ALL_BADGES.filter((b) => b.category === "director").length,
+            },
+            {
+              id: "discovery",
+              label: "Descubrimiento & 70s",
+              count: ALL_BADGES.filter((b) => b.category === "discovery").length,
+            },
+            {
+              id: "activity",
+              label: "Actividad & Maratones",
+              count: ALL_BADGES.filter((b) => b.category === "activity").length,
+            },
+            {
+              id: "starter_writing",
+              label: "Inicio & Reseñas",
+              count: ALL_BADGES.filter((b) => b.category === "starter" || b.category === "writing").length,
+            },
+          ].map((tab) => {
+            const isActive = badgeCategory === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setBadgeCategory(tab.id)}
+                className={`px-3 py-1.5 rounded-xl whitespace-nowrap transition border ${
+                  isActive
+                    ? "bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm"
+                    : "bg-white/5 text-zinc-400 border-white/5 hover:text-white hover:bg-white/10"
+                }`}
+              >
+                {tab.label} <span className="opacity-60 text-[10px]">({tab.count})</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Badges Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-          {ALL_BADGES.map((badge) => {
+          {ALL_BADGES.filter((badge) => {
+            if (badgeCategory === "all") return true;
+            if (badgeCategory === "starter_writing") {
+              return badge.category === "starter" || badge.category === "writing";
+            }
+            return badge.category === badgeCategory;
+          }).map((badge) => {
             const isUnlocked = unlockedBadges.has(badge.code);
+
+            const categoryLabels: Record<string, string> = {
+              director: "DIRECTOR",
+              discovery: "DESCUBRIMIENTO",
+              activity: "ACTIVIDAD",
+              starter: "INICIO",
+              writing: "RESEÑAS",
+            };
 
             return (
               <div
                 key={badge.code}
-                className={`p-4 rounded-2xl border transition flex items-start gap-3.5 ${
+                className={`p-4 rounded-2xl border transition flex flex-col justify-between gap-3 relative overflow-hidden group ${
                   isUnlocked
-                    ? "bg-[#161626] border-amber-500/30 shadow-lg shadow-amber-950/20"
-                    : "bg-[#101018] border-white/5 opacity-50 grayscale"
+                    ? "bg-gradient-to-b from-[#181628] to-[#121120] border-amber-500/40 shadow-lg shadow-amber-950/20"
+                    : "bg-[#0f0f18] border-white/5 opacity-60"
                 }`}
               >
-                <div
-                  className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0 ${
-                    isUnlocked
-                      ? "bg-gradient-to-br from-amber-500/20 to-red-500/20 border border-amber-500/40"
-                      : "bg-zinc-800"
-                  }`}
-                >
-                  {badge.icon}
+                {isUnlocked && (
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+                )}
+
+                <div className="flex items-start gap-3.5">
+                  <div
+                    className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0 transition-transform group-hover:scale-105 ${
+                      isUnlocked
+                        ? "bg-gradient-to-br from-amber-500/20 to-red-500/20 border border-amber-500/50 shadow-md shadow-amber-500/10"
+                        : "bg-zinc-800/80 border border-white/5"
+                    }`}
+                  >
+                    {badge.icon}
+                  </div>
+
+                  <div className="space-y-1 min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <h4 className="font-bold text-sm text-white truncate">
+                        {badge.name}
+                      </h4>
+                      {isUnlocked ? (
+                        <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0">
+                          ✓
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-white/5 text-zinc-500 border border-white/5 shrink-0 flex items-center gap-1">
+                          <Lock className="w-2.5 h-2.5" />
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      {badge.description}
+                    </p>
+                  </div>
                 </div>
 
-                <div className="space-y-0.5 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <h4 className="font-bold text-sm text-white truncate">{badge.name}</h4>
-                    {isUnlocked && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300">
-                        ✓
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-zinc-400 leading-relaxed">{badge.description}</p>
+                {/* Category Pill Tag */}
+                <div className="flex items-center justify-between pt-2 border-t border-white/5 text-[10px] font-semibold text-zinc-500">
+                  <span className="uppercase tracking-wider">
+                    {categoryLabels[badge.category] || badge.category}
+                  </span>
+                  <span>{isUnlocked ? "Completado" : "Bloqueado"}</span>
                 </div>
               </div>
             );

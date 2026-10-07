@@ -18,6 +18,7 @@ import { useAuth } from "@/lib/context/AuthContext";
 import { supabase } from "@/lib/supabase/client";
 import { Log } from "@/lib/supabase/types";
 import MarkdownRenderer from "@/components/ui/MarkdownRenderer";
+import { ComfortZoneModal } from "@/components/movies/ComfortZoneModal";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -49,6 +50,7 @@ export default function CineBuddyChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [systemContext, setSystemContext] = useState<SystemContext | null>(null);
   const [loadingContext, setLoadingContext] = useState(true);
+  const [isComfortModalOpen, setIsComfortModalOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -297,14 +299,26 @@ Conozco tu historial: llevas ${logs.length} ${
           </div>
         </div>
 
-        {systemContext && (
-          <div className="hidden sm:flex items-center gap-2 text-xs text-zinc-400 bg-white/5 border border-white/5 px-3 py-1.5 rounded-2xl">
-            <Film className="w-3.5 h-3.5 text-red-500" />
-            <span>{systemContext.totalWatched} vistas</span>
-            <span className="text-zinc-600">•</span>
-            <span>{systemContext.watchlistCount} en lista</span>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsComfortModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-gradient-to-r from-purple-600/20 via-pink-600/20 to-amber-500/20 border border-purple-500/40 text-purple-200 hover:text-white hover:border-purple-300 hover:bg-purple-600/30 transition text-xs font-bold shadow-md shadow-purple-950/20 cursor-pointer"
+            title="Fuera de tu Zona de Confort: El Salto de Fe"
+          >
+            <Compass className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
+            <span className="hidden sm:inline">Fuera de Zona 🚀</span>
+            <span className="sm:hidden">Salto de Fe</span>
+          </button>
+
+          {systemContext && (
+            <div className="hidden sm:flex items-center gap-2 text-xs text-zinc-400 bg-white/5 border border-white/5 px-3 py-1.5 rounded-2xl">
+              <Film className="w-3.5 h-3.5 text-red-500" />
+              <span>{systemContext.totalWatched} vistas</span>
+              <span className="text-zinc-600">•</span>
+              <span>{systemContext.watchlistCount} en lista</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Messages Scroll Area */}
@@ -371,6 +385,18 @@ Conozco tu historial: llevas ${logs.length} ${
             Sugerencias para empezar:
           </span>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button
+              onClick={() => setIsComfortModalOpen(true)}
+              disabled={isLoading}
+              className="p-2.5 rounded-2xl bg-gradient-to-r from-purple-950/40 via-[#181126] to-amber-950/30 hover:border-purple-500/50 border border-purple-500/30 text-left text-xs text-purple-200 hover:text-white transition shadow-sm flex items-center justify-between group active:scale-98 col-span-1 sm:col-span-2 cursor-pointer"
+            >
+              <div className="flex items-center gap-2">
+                <Compass className="w-4 h-4 text-purple-400" />
+                <span className="font-bold">Fuera de tu Zona de Confort (El Salto de Fe 🎲)</span>
+                <span className="text-[11px] text-zinc-400 hidden sm:inline">- Descubrí un caballo de Troya cinematográfico</span>
+              </div>
+              <ArrowRight className="w-3.5 h-3.5 text-purple-400 group-hover:translate-x-0.5 transition" />
+            </button>
             {STARTER_SUGGESTIONS.map((suggestion, idx) => (
               <button
                 key={idx}
@@ -414,6 +440,13 @@ Conozco tu historial: llevas ${logs.length} ${
           </button>
         </div>
       </div>
+
+      {/* Out of Comfort Zone Modal */}
+      <ComfortZoneModal
+        isOpen={isComfortModalOpen}
+        onClose={() => setIsComfortModalOpen(false)}
+        initialFavorites={systemContext?.favoriteMovies}
+      />
     </div>
   );
 }

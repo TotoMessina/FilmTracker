@@ -9,6 +9,7 @@ import { LogMovieModal } from "../movies/LogMovieModal";
 import { CinemaTicketModal } from "../movies/CinemaTicketModal";
 import { AuthPromptModal } from "../auth/AuthPromptModal";
 import { QuickRecommenderModal } from "../ai/QuickRecommenderModal";
+import { BadgeCelebrationModal } from "../gamification/BadgeCelebrationModal";
 import { X, Film } from "lucide-react";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -75,6 +76,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <LogMovieModal />
       <CinemaTicketModal />
       <AuthPromptModal />
+      <BadgeCelebrationModal />
     </div>
   );
 }

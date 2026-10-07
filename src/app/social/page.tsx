@@ -19,6 +19,8 @@ import { Profile, Log } from "@/lib/supabase/types";
 import { getImageUrl } from "@/lib/tmdb/client";
 import { formatDate, getRatingColor } from "@/lib/utils/formatting";
 import { useApp } from "@/lib/context/AppContext";
+import { ReviewCard } from "@/components/social/ReviewCard";
+import { CommunityTrendingCarousel } from "@/components/home/CommunityTrendingCarousel";
 
 interface SoulmateCandidate {
   profile: Profile;
@@ -37,6 +39,7 @@ export default function SocialPage() {
   const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
   const [soulmates, setSoulmates] = useState<SoulmateCandidate[]>([]);
   const [activityFeed, setActivityFeed] = useState<Log[]>([]);
+  const [userWatchedIds, setUserWatchedIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
 
   // Load community feed & soulmates
@@ -76,6 +79,7 @@ export default function SocialPage() {
             .eq("user_id", user.id);
 
           const myMovieIds = new Set((myLogs || []).map((l: { tmdb_id: number }) => l.tmdb_id));
+          setUserWatchedIds(myMovieIds);
 
           const { data: allProfiles } = await supabase
             .from("profiles")
@@ -122,6 +126,9 @@ export default function SocialPage() {
             setSoulmates(others.map((p) => ({ profile: p, compatibilityScore: 0, sharedCount: 0 })));
           }
         } else if (isGuest) {
+          const guestLogs = JSON.parse(localStorage.getItem("filmtracker_guest_logs") || "[]");
+          setUserWatchedIds(new Set(guestLogs.map((l: any) => l.tmdb_id)));
+
           const { data: allProfiles } = await supabase
             .from("profiles")
             .select("*")
@@ -273,6 +280,9 @@ export default function SocialPage() {
         </div>
       )}
 
+      {/* Community Trending Carousel */}
+      <CommunityTrendingCarousel />
+
       {/* Cine Soulmates Section */}
       {soulmates.length > 0 && (
         <div className="space-y-4">
@@ -356,73 +366,15 @@ export default function SocialPage() {
 
         {activityFeed.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {activityFeed.map((log) => {
-              const movie = log.movie;
-              const profile = log.profile;
-
-              return (
-                <div
-                  key={log.id}
-                  className="p-5 rounded-3xl bg-[#141420] border border-white/5 space-y-4 shadow-xl flex flex-col justify-between"
-                >
-                  <div className="flex items-center gap-3">
-                    <Link href={`/profile/${profile?.id}`}>
-                      <img
-                        src={profile?.avatar_url || `https://ui-avatars.com/api/?name=${profile?.username || "User"}&background=e50914&color=fff`}
-                        alt={profile?.username || "Usuario"}
-                        className="w-10 h-10 rounded-full object-cover border border-white/10"
-                      />
-                    </Link>
-                    <div className="min-w-0">
-                      <Link
-                        href={`/profile/${profile?.id}`}
-                        className="font-bold text-sm text-white hover:underline truncate block"
-                      >
-                        {profile?.username || "Cinéfilo"}
-                      </Link>
-                      <span className="text-[11px] text-zinc-500">
-                        {formatDate(log.watched_at)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3 bg-white/5 p-3 rounded-2xl border border-white/5">
-                    <Link
-                      href={`/movie/${log.tmdb_id}`}
-                      className="w-12 aspect-[2/3] rounded-lg overflow-hidden shrink-0 bg-zinc-800"
-                    >
-                      <img
-                        src={getImageUrl(log.custom_poster_path || movie?.poster_path, "w185")}
-                        alt={movie?.title || "Película"}
-                        className="w-full h-full object-cover"
-                      />
-                    </Link>
-
-                    <div className="min-w-0 flex-1 flex flex-col justify-between">
-                      <Link
-                        href={`/movie/${log.tmdb_id}`}
-                        className="font-bold text-sm text-white truncate hover:text-red-400 transition"
-                      >
-                        {movie?.title || "Película"}
-                      </Link>
-
-                      {log.rating !== null && (
-                        <div className="flex items-center gap-1 font-bold text-xs mt-1">
-                          <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                          <span className={getRatingColor(log.rating)}>{log.rating}/10</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {log.review && (
-                    <p className="text-xs text-zinc-300 italic line-clamp-2 leading-relaxed">
-                      &ldquo;{log.review}&rdquo;
-                    </p>
-                  )}
-                </div>
-              );
-            })}
+            {activityFeed.map((log) => (
+              <ReviewCard
+                key={log.id}
+                log={log}
+                currentUserId={user?.id}
+                userWatchedIds={userWatchedIds}
+                showMoviePoster={true}
+              />
+            ))}
           </div>
         ) : (
           <div className="text-center py-16 text-zinc-500 text-sm">

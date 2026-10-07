@@ -16,7 +16,8 @@ import {
   MessageSquare,
   Layers,
   BarChart3,
-  Users
+  Users,
+  Flame
 } from "lucide-react";
 import { useAuth } from "@/lib/context/AuthContext";
 import { supabase } from "@/lib/supabase/client";
@@ -29,6 +30,8 @@ import ProfileStats from "@/components/profile/ProfileStats";
 import ProfileCollections from "@/components/profile/ProfileCollections";
 import { getUserCollections } from "@/lib/services/collections";
 import { StreamingPlatformsSelector } from "@/components/profile/StreamingPlatformsSelector";
+import TasteBiasAnalyzer from "@/components/profile/TasteBiasAnalyzer";
+import { MovieGridShareModal } from "@/components/profile/MovieGridShareModal";
 
 export default function UserProfilePage() {
   const params = useParams();
@@ -41,20 +44,21 @@ export default function UserProfilePage() {
   const [logs, setLogs] = useState<Log[]>([]);
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [collections, setCollections] = useState<UserCollection[]>([]);
-  const [activeTab, setActiveTab] = useState<"diary" | "reviews" | "collections" | "stats" | "watchlist">("diary");
+  const [activeTab, setActiveTab] = useState<"diary" | "reviews" | "collections" | "stats" | "watchlist" | "criterion">("diary");
   const [isFollowing, setIsFollowing] = useState(false);
   const [isMutualFollow, setIsMutualFollow] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [badgesCount, setBadgesCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [isGridModalOpen, setIsGridModalOpen] = useState(false);
 
   // Read URL query params on mount for initial tab or collection deep link
   useEffect(() => {
     if (typeof window !== "undefined") {
       const urlParams = new URLSearchParams(window.location.search);
       const tabParam = urlParams.get("tab");
-      if (tabParam && ["diary", "reviews", "collections", "stats", "watchlist"].includes(tabParam)) {
+      if (tabParam && ["diary", "reviews", "collections", "stats", "watchlist", "criterion"].includes(tabParam)) {
         setActiveTab(tabParam as any);
       } else if (urlParams.get("collection")) {
         setActiveTab("collections");
@@ -185,6 +189,21 @@ export default function UserProfilePage() {
     return logs.filter((l) => l.review && l.review.trim().length > 0).length;
   }, [logs]);
 
+  const topMoviesForGrid = useMemo(() => {
+    const sorted = [...logs].sort((a, b) => {
+      const rA = typeof a.rating === "number" ? a.rating : 0;
+      const rB = typeof b.rating === "number" ? b.rating : 0;
+      if (rB !== rA) return rB - rA;
+      return new Date(b.watched_at || 0).getTime() - new Date(a.watched_at || 0).getTime();
+    });
+
+    return sorted.slice(0, 9).map((l) => ({
+      title: l.movie?.title || "Película",
+      poster_path: l.movie?.poster_path || null,
+      rating: typeof l.rating === "number" ? l.rating : undefined,
+    }));
+  }, [logs]);
+
   if (loading) {
     return (
       <div className="min-h-[50vh] flex items-center justify-center text-zinc-400 gap-2">
@@ -235,8 +254,30 @@ export default function UserProfilePage() {
         </div>
 
         {/* Action button */}
-        {!isMe && user && (
+        {isMe ? (
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-center sm:justify-start">
+            <button
+              onClick={() => setIsGridModalOpen(true)}
+              disabled={logs.length === 0}
+              className="flex-1 sm:flex-initial justify-center px-4 py-2.5 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-purple-600 hover:from-red-500 hover:to-purple-500 text-white font-bold text-xs flex items-center gap-2 transition shadow-lg shadow-red-600/30 active:scale-95 disabled:opacity-40 cursor-pointer"
+              title="Crear collage de tus mejores películas para Instagram Stories o Twitter"
+            >
+              <Layers className="w-4 h-4 text-white" />
+              <span>Collage para Redes 📸</span>
+            </button>
+          </div>
+        ) : user ? (
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-center sm:justify-start">
+            <button
+              onClick={() => setIsGridModalOpen(true)}
+              disabled={logs.length === 0}
+              className="flex-1 sm:flex-initial justify-center px-3.5 py-2.5 rounded-2xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 font-bold text-xs flex items-center gap-1.5 transition active:scale-95 disabled:opacity-40 cursor-pointer"
+              title="Ver collage de películas de este usuario"
+            >
+              <Layers className="w-4 h-4" />
+              <span>Collage 📸</span>
+            </button>
+
             <Link
               href={`/watchlist?tab=shared&friendId=${profile.id}`}
               className="flex-1 sm:flex-initial justify-center px-4 py-2.5 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold text-xs flex items-center gap-1.5 transition shadow"
@@ -275,7 +316,7 @@ export default function UserProfilePage() {
               )}
             </button>
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* AI Bio Generator (Only for own profile) */}
@@ -355,6 +396,18 @@ export default function UserProfilePage() {
         >
           <Bookmark className="w-4 h-4" />
           <span>Watchlist ({watchlist.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("criterion")}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-semibold transition shrink-0 ${
+            activeTab === "criterion"
+              ? "bg-gradient-to-r from-red-600 to-amber-600 text-white shadow-lg shadow-red-600/30"
+              : "text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10"
+          }`}
+        >
+          <Flame className="w-4 h-4 text-amber-400" />
+          <span>Mi Criterio</span>
         </button>
       </div>
 
@@ -443,6 +496,25 @@ export default function UserProfilePage() {
           )}
         </div>
       )}
+
+      {activeTab === "criterion" && (
+        <TasteBiasAnalyzer
+          logs={logs}
+          userId={targetId}
+          isMe={isMe}
+          username={profile?.username}
+        />
+      )}
+
+      {/* Movie Grid Share Modal */}
+      <MovieGridShareModal
+        isOpen={isGridModalOpen}
+        onClose={() => setIsGridModalOpen(false)}
+        title={isMe ? "Mis Películas Favoritas" : `Favoritas de ${profile.username}`}
+        subtitle={`@${profile.username} • FilmTracker 2026`}
+        username={profile.username}
+        movies={topMoviesForGrid}
+      />
     </div>
   );
 }

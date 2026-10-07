@@ -100,7 +100,7 @@ Reglas:
           // @ts-ignore
           reasoning_effort: "low",
           temperature: 0.2,
-          max_tokens: 800,
+          max_tokens: 1800,
         });
 
         const content = completion.choices[0]?.message?.content?.trim() || "";

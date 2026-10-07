@@ -20,7 +20,8 @@ import {
   Calendar,
   Layers,
   Check,
-  Ticket
+  Ticket,
+  Compass
 } from "lucide-react";
 import { 
   TMDBMovie, 
@@ -46,6 +47,7 @@ import { PersonCard } from "@/components/search/PersonCard";
 import { CompanyCard } from "@/components/search/CompanyCard";
 import { PersonDetailModal } from "@/components/search/PersonDetailModal";
 import { SceneSearchModal } from "@/components/search/SceneSearchModal";
+import { ComfortZoneModal } from "@/components/movies/ComfortZoneModal";
 import { useApp } from "@/lib/context/AppContext";
 import { useAuth } from "@/lib/context/AuthContext";
 import { loadUserStreamingPlatforms } from "@/lib/services/streamingPlatforms";
@@ -105,6 +107,7 @@ function SearchContent() {
   // Advanced Filters
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isSceneModalOpen, setIsSceneModalOpen] = useState(false);
+  const [isComfortModalOpen, setIsComfortModalOpen] = useState(false);
   const [selectedGenre, setSelectedGenre] = useState<number | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<number | null>(null);
   const [selectedStudio, setSelectedStudio] = useState<{ id: number; name: string } | null>(
@@ -485,6 +488,17 @@ function SearchContent() {
             <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
             <span className="hidden md:inline">Buscar por Escena (IA)</span>
             <span className="md:hidden">Escena IA</span>
+          </button>
+
+          {/* AI Out of Comfort Zone / El Salto de Fe Button */}
+          <button
+            onClick={() => setIsComfortModalOpen(true)}
+            className="flex items-center gap-2 px-3.5 sm:px-4 py-3.5 rounded-2xl bg-gradient-to-r from-purple-600/20 via-pink-600/20 to-amber-500/20 border border-purple-500/35 text-purple-300 hover:text-white hover:border-purple-400 hover:bg-purple-600/30 transition text-xs sm:text-sm font-bold shadow-md shadow-purple-950/20 shrink-0 cursor-pointer"
+            title="Fuera de tu Zona de Confort: El Salto de Fe"
+          >
+            <Compass className="w-4 h-4 text-purple-400 animate-pulse" />
+            <span className="hidden md:inline">Zona de Confort 🚀</span>
+            <span className="md:hidden">Salto de Fe</span>
           </button>
 
           {/* Filter Drawer Toggle Button */}
@@ -1213,6 +1227,12 @@ function SearchContent() {
       <SceneSearchModal
         isOpen={isSceneModalOpen}
         onClose={() => setIsSceneModalOpen(false)}
+      />
+
+      {/* AI Out of Comfort Zone Modal */}
+      <ComfortZoneModal
+        isOpen={isComfortModalOpen}
+        onClose={() => setIsComfortModalOpen(false)}
       />
     </div>
   );

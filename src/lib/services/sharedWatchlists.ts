@@ -4,22 +4,11 @@ import { Profile, SharedWatchlist, SharedWatchlistMovie, SharedWatchlistMember }
 const LOCAL_STORAGE_KEY_PREFIX = "filmtracker_shared_watchlists_";
 
 /**
- * Retrieves mutual followers (friends who follow each other) for a given user.
+ * Retrieves mutual followers (friends who follow each other) for a given user strictly from Supabase.
  */
 export async function getMutualFollowers(userId: string): Promise<Profile[]> {
-  if (!userId) {
-    return [
-      {
-        id: "demo-amigo-1",
-        username: "Cinefilo_Amigo",
-        avatar_url: "https://ui-avatars.com/api/?name=Amigo+Cine&background=e50914&color=fff",
-      },
-      {
-        id: "demo-amigo-2",
-        username: "Laura_Films",
-        avatar_url: "https://ui-avatars.com/api/?name=Laura+Films&background=3b82f6&color=fff",
-      },
-    ];
+  if (!userId || userId.startsWith("guest")) {
+    return [];
   }
 
   try {
@@ -49,43 +38,29 @@ export async function getMutualFollowers(userId: string): Promise<Profile[]> {
     // Mutuals: Intersection of following and followers
     const mutuals = followingProfiles.filter((p) => followerIds.has(p.id));
 
-    // If mutuals found, return them
     if (mutuals.length > 0) {
       return mutuals;
     }
 
-    // Fallback: If no strict mutuals yet (e.g., fresh dev database or test user),
-    // provide the following users or other community profiles so the feature is immediately testable
     if (followingProfiles.length > 0) {
       return followingProfiles;
     }
 
+    // Community profiles from database
     const { data: others } = await supabase
       .from("profiles")
       .select("*")
       .neq("id", userId)
-      .limit(6);
+      .limit(10);
 
     if (others && others.length > 0) {
       return others as Profile[];
     }
   } catch (err) {
-    console.warn("Error fetching mutual followers:", err);
+    console.warn("Error fetching mutual followers from Supabase:", err);
   }
 
-  // Demo fallback
-  return [
-    {
-      id: "demo-amigo-1",
-      username: "Cinefilo_Amigo",
-      avatar_url: "https://ui-avatars.com/api/?name=Amigo+Cine&background=e50914&color=fff",
-    },
-    {
-      id: "demo-amigo-2",
-      username: "Laura_Films",
-      avatar_url: "https://ui-avatars.com/api/?name=Laura+Films&background=3b82f6&color=fff",
-    },
-  ];
+  return [];
 }
 
 /**
