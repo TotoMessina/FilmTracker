@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { 
   BarChart3, 
@@ -10,7 +10,6 @@ import {
   Award, 
   Tv, 
   Sparkles,
-  Calendar,
   Layers,
   Clapperboard,
   ChevronRight,
@@ -18,13 +17,18 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/context/AuthContext";
 import { supabase } from "@/lib/supabase/client";
-import { Log, UserBadge } from "@/lib/supabase/types";
+import { Log } from "@/lib/supabase/types";
 import { ALL_BADGES } from "@/lib/gamification/badges";
 import { MonthlyChallengesCard } from "@/components/challenges/MonthlyChallengesCard";
-import { formatRuntime, formatDate, getRatingColor } from "@/lib/utils/formatting";
+import { useApp } from "@/lib/context/AppContext";
+import { calculateStats, filterStatsLogs, watchedDate } from "@/lib/stats";
+import ExpandedStats from "@/components/stats/ExpandedStats";
 
 export default function StatsPage() {
   const { user, isGuest } = useAuth();
+  const { lastUpdated } = useApp();
+  const [year, setYear] = useState('all');
+  const [loadError, setLoadError] = useState('');
 
   const [logs, setLogs] = useState<Log[]>([]);
   const [unlockedBadges, setUnlockedBadges] = useState<Set<string>>(new Set());
@@ -32,19 +36,26 @@ export default function StatsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     async function fetchStatsData() {
       setLoading(true);
+      setLoadError('');
+      setLogs([]);
+      setUnlockedBadges(new Set());
       try {
         if (user) {
-          // Fetch logs with movie data
-          const { data: logsData } = await supabase
-            .from("logs")
-            .select("*, movie:movies(*)")
-            .eq("user_id", user.id);
-
-          if (logsData) {
-            setLogs(logsData as Log[]);
+          // Paginate so large imported diaries are not silently capped at 1000 rows.
+          const allLogs: Log[] = [];
+          for (let offset = 0; ; offset += 500) {
+            const { data, error } = await supabase.from("logs")
+              .select("*, movie:movies(*)").eq("user_id", user.id)
+              .order('id').range(offset, offset + 499);
+            if (error) throw error;
+            if (cancelled) return;
+            allLogs.push(...(data || []) as Log[]);
+            if (!data || data.length < 500) break;
           }
+          setLogs(allLogs);
 
           // Fetch user badges
           const { data: badgeData } = await supabase
@@ -52,7 +63,7 @@ export default function StatsPage() {
             .select("badge_code")
             .eq("user_id", user.id);
 
-          if (badgeData) {
+          if (!cancelled && badgeData) {
             setUnlockedBadges(new Set(badgeData.map((b) => b.badge_code)));
           }
         } else if (isGuest) {
@@ -71,8 +82,9 @@ export default function StatsPage() {
         }
       } catch (err) {
         console.warn("Stats load error:", err);
+        if (!cancelled) setLoadError('No se pudieron cargar las estadísticas. Recargá la página para intentar nuevamente.');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
 
@@ -84,31 +96,33 @@ export default function StatsPage() {
     };
     window.addEventListener("filmtracker_badges_updated", handleBadgesUpdated);
     return () => {
+      cancelled = true;
       window.removeEventListener("filmtracker_badges_updated", handleBadgesUpdated);
     };
-  }, [user, isGuest]);
+  }, [user, isGuest, lastUpdated]);
 
   // Calculations
   const currentYear = new Date().getFullYear();
-  const currentYearLogs = logs.filter((log) => {
-    const d = log.watched_at || log.created_at;
-    return d && new Date(d).getFullYear() === currentYear;
-  });
+  const currentYearLogs = filterStatsLogs(logs, String(currentYear));
+  const years = [...new Set(logs.map(log => watchedDate(log)?.slice(0, 4)).filter((value): value is string => Boolean(value)))].sort().reverse();
+  const scopedLogs = useMemo(() => filterStatsLogs(logs, year), [logs, year]);
+  const stats = useMemo(() => calculateStats(scopedLogs, year), [scopedLogs, year]);
+  const undatedCount = logs.filter(log => !watchedDate(log)).length;
 
-  const totalWatched = logs.length;
-  const totalMinutes = logs.reduce((acc, log) => acc + (log.movie?.runtime || 105), 0);
+  const totalWatched = scopedLogs.length;
+  const totalMinutes = stats.totalMinutes;
   const totalHours = (totalMinutes / 60).toFixed(1);
   const totalDays = (totalMinutes / 1440).toFixed(1);
 
   // Ratings calculation
-  const validRatings = logs.filter((l) => l.rating !== null && l.rating !== undefined).map((l) => l.rating as number);
+  const validRatings = stats.ratings;
   const averageRating = validRatings.length > 0 
     ? (validRatings.reduce((a, b) => a + b, 0) / validRatings.length).toFixed(1)
     : "—";
 
   // Genres breakdown
   const genreCounts: Record<string, number> = {};
-  logs.forEach((log) => {
+  scopedLogs.forEach((log) => {
     if (log.movie?.genres) {
       log.movie.genres.forEach((g) => {
         genreCounts[g.name] = (genreCounts[g.name] || 0) + 1;
@@ -122,7 +136,7 @@ export default function StatsPage() {
 
   // Platforms breakdown
   const platformCounts: Record<string, number> = {};
-  logs.forEach((log) => {
+  scopedLogs.forEach((log) => {
     const p = log.platform || "No especificada";
     platformCounts[p] = (platformCounts[p] || 0) + 1;
   });
@@ -130,6 +144,9 @@ export default function StatsPage() {
   const sortedPlatforms = Object.entries(platformCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
+
+  if (loading) return <div role="status" className="py-20 text-center text-zinc-400">Cargando tus estadísticas…</div>;
+  if (loadError) return <div role="alert" className="py-12 text-center text-red-400">{loadError}</div>;
 
   return (
     <div className="space-y-8">
@@ -172,6 +189,11 @@ export default function StatsPage() {
       )}
 
       {/* Highlights Grid */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-white/5 bg-[#141420] p-4">
+        <div><h2 className="font-bold text-white">{year === 'all' ? 'Todo tu historial' : `Tu cine en ${year}`}</h2><p className="text-xs text-zinc-400 mt-1">{undatedCount > 0 ? `${undatedCount} registros sin fecha: se incluyen solo en el historial completo.` : 'Filtrá por el año en que viste cada película.'}</p></div>
+        <label className="text-xs text-zinc-400 flex items-center gap-3">Período<select value={year} onChange={event => setYear(event.target.value)} className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white"><option value="all">Todo el historial</option>{[...new Set([String(currentYear), ...years, ...(year === 'all' ? [] : [year])])].sort().reverse().map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+      </div>
+      {!totalWatched && <p className="text-sm text-zinc-400 rounded-2xl border border-white/5 p-5">No hay películas en este período. Registrá una película o elegí otro año.</p>}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Movies */}
         <div className="p-5 rounded-2xl bg-[#141420] border border-white/5 shadow-lg">
@@ -191,6 +213,7 @@ export default function StatsPage() {
           </div>
           <div className="text-3xl font-black text-white mt-2">{totalHours} <span className="text-sm text-zinc-400">h</span></div>
           <p className="text-xs text-zinc-500 mt-1">equivalente a {totalDays} días enteros</p>
+          <p className="text-xs text-zinc-500 mt-1">Duración disponible en {stats.knownRuntimes} de {totalWatched} registros</p>
         </div>
 
         {/* Average Rating */}
@@ -212,7 +235,7 @@ export default function StatsPage() {
             <Layers className="w-4 h-4 text-rose-500" />
           </div>
           <div className="text-3xl font-black text-white mt-2">
-            {logs.filter((l) => l.is_rewatch).length}
+            {scopedLogs.filter((l) => l.is_rewatch).length}
           </div>
           <p className="text-xs text-zinc-500 mt-1">películas vueltas a disfrutar</p>
         </div>
@@ -290,6 +313,8 @@ export default function StatsPage() {
       </div>
 
       {/* Monthly Challenges Section */}
+      <ExpandedStats stats={stats} total={totalWatched} year={year} />
+      <p className="text-xs text-zinc-500">Los desafíos y logros siguientes conservan sus propios períodos y no cambian con el filtro por año.</p>
       <MonthlyChallengesCard logs={logs} />
 
       {/* Gamification Achievements / Badges Section */}

@@ -225,6 +225,7 @@ export default function UserProfilePage() {
 
   return (
     <div className="space-y-8 max-w-5xl mx-auto">
+      {isMe && <div className="flex justify-end"><Link href="/import" className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-semibold hover:bg-zinc-800">Importar películas y puntajes</Link></div>}
       {/* Profile Header Banner */}
       <div className="p-6 sm:p-8 rounded-3xl bg-[#141420] border border-white/5 shadow-2xl flex flex-col sm:flex-row items-center sm:items-start justify-between gap-6">
         <div className="flex flex-col sm:flex-row items-center gap-5 text-center sm:text-left">
