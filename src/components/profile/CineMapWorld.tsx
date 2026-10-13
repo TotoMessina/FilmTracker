@@ -5,7 +5,7 @@ import { ComposableMap, Geographies, Geography } from 'react-simple-maps/core';
 import type { FeatureCollection } from 'geojson';
 import { countryColor, countryName, type CineMapCountry } from '@/lib/services/cineMap';
 
-export default function CineMapWorld({ countries }: { countries: CineMapCountry[] }) {
+export default function CineMapWorld({ countries, onSelectCountry }: { countries: CineMapCountry[]; onSelectCountry: (code: string) => void }) {
   const [map, setMap] = useState<FeatureCollection | null>(null);
   const [error, setError] = useState(false);
   const [active, setActive] = useState<{ code: string; name: string } | null>(null);
@@ -22,17 +22,20 @@ export default function CineMapWorld({ countries }: { countries: CineMapCountry[
   if (error) return <p role="alert" className="p-6 text-zinc-400">No se pudo cargar el mapa. Podés consultar todos los países en el listado de abajo.</p>;
   if (!map) return <p role="status" className="p-10 text-zinc-400 animate-pulse">Desplegando el planisferio…</p>;
   return <div className="relative rounded-2xl border border-white/5 bg-zinc-950/40 overflow-hidden" onMouseLeave={() => setActive(null)}>
-    <ComposableMap width={800} height={450} projectionConfig={{ scale: 135, center: [0, 5] }} aria-label="Pasaporte cinematográfico mundial: países por cantidad de visionados">
-      <Geographies geography={map}>{({ geographies }) => geographies.filter(geo => (geo.properties as any)?.countryCode !== 'AQ').map(geo => {
-        const props = (geo.properties as any) || {};
+    <ComposableMap className="w-full h-auto" width={800} height={450} projectionConfig={{ scale: 135, center: [0, 5] }} aria-label="Pasaporte cinematográfico mundial: países por cantidad de visionados">
+      <Geographies geography={map}>{({ geographies }) => geographies.filter(geo => geo.properties?.countryCode !== 'AQ').map(geo => {
+        const props = geo.properties || {};
         const code = String(props.countryCode || '');
         const stat = countries.find(country => country.countryCode === code);
         const name = /^[A-Z]{2}$/.test(code) ? countryName(code) : String(props.name || '');
         const label = `${name}: ${stat?.count || 0} visionados, promedio ${stat?.avgRating === null || !stat ? 'sin puntaje' : stat.avgRating.toFixed(1)}`;
-        return <Geography key={geo.rsmKey} geography={geo} tabIndex={0} aria-label={label}
+        const selectable = /^[A-Z]{2}$/.test(code);
+        return <Geography key={geo.rsmKey} geography={geo} tabIndex={selectable ? 0 : -1} role={selectable ? 'button' : undefined} aria-label={`${label}${selectable ? '. Descubrir películas con IA' : ''}`}
+          onClick={() => { if (selectable) onSelectCountry(code); }}
+          onKeyDown={event => { if (selectable && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onSelectCountry(code); } }}
           onMouseEnter={() => setActive({ code, name })} onFocus={() => setActive({ code, name })} onBlur={() => setActive(null)}
           fill={countryColor(stat?.count || 0, maximum)} stroke="#71717a" strokeWidth={0.4}
-          style={{ default: { outline: 'none' }, hover: { fill: '#fb7185', outline: 'none', cursor: 'pointer' }, pressed: { fill: '#fda4af' } } as any}>
+          className="outline-none hover:fill-rose-400 focus:fill-rose-400 focus:stroke-white active:fill-rose-300 cursor-pointer">
           <title>{label}</title>
         </Geography>;
       })}</Geographies>

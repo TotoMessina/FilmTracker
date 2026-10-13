@@ -9,19 +9,24 @@ import {
   Trash2, 
   Plus, 
   Swords, 
-  Sparkles,
-  Film,
-  X,
-  Brain,
-  Loader2,
-  Users,
-  Zap
+  Sparkles, 
+  Film, 
+  X, 
+  Brain, 
+  Loader2, 
+  Users, 
+  Zap,
+  Hourglass,
+  AlertTriangle,
+  ExternalLink,
+  Radio
 } from "lucide-react";
 import { useAuth } from "@/lib/context/AuthContext";
 import { useApp } from "@/lib/context/AppContext";
 import { supabase } from "@/lib/supabase/client";
 import { WatchlistItem, Movie, Log } from "@/lib/supabase/types";
 import { AIWatchlistPriority } from "@/lib/groq/types";
+import { ExpiringMovieItem } from "@/app/api/streaming/expiring/route";
 import { getImageUrl } from "@/lib/tmdb/client";
 import { formatRuntime } from "@/lib/utils/formatting";
 import MoodPicker from "@/components/movies/MoodPicker";
@@ -42,7 +47,14 @@ export default function WatchlistPage() {
   const [loading, setLoading] = useState(true);
   const [runtimeFilter, setRuntimeFilter] = useState<RuntimeFilter>("all");
 
-  // Read URL query params on mount for initial tab or preselected friend
+  // Streaming Radar State (Lo que abandona tus plataformas)
+  const [expiringList, setExpiringList] = useState<ExpiringMovieItem[]>([]);
+  const [radarLoading, setRadarLoading] = useState(false);
+  const [radarError, setRadarError] = useState(false);
+  const [showExpiringModal, setShowExpiringModal] = useState(false);
+  const [filterExpiringOnly, setFilterExpiringOnly] = useState(false);
+
+  // Read URL query params on mount for initial tab, preselected friend, or expiring filter
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -51,6 +63,9 @@ export default function WatchlistPage() {
       }
       if (params.get("friendId")) {
         setPreselectedFriendId(params.get("friendId"));
+      }
+      if (params.get("filter") === "expiring" || params.get("filter") === "urgentes") {
+        setFilterExpiringOnly(true);
       }
     }
   }, []);
@@ -132,14 +147,69 @@ export default function WatchlistPage() {
     setItems((prev) => prev.filter((i) => i.tmdb_id !== tmdbId));
   };
 
-  // Filter by runtime
-  const filteredItems = items.filter((item) => {
-    const runtime = item.movie?.runtime;
-    if (runtimeFilter === "all") return true;
-    if (!runtime) return false;
-    const maxMinutes = parseInt(runtimeFilter, 10);
-    return runtime <= maxMinutes;
-  });
+  // Fetch Streaming Radar expiring titles
+  useEffect(() => {
+    async function loadStreamingRadar() {
+      if (items.length === 0) {
+        setExpiringList([]);
+        return;
+      }
+      setRadarLoading(true);
+      setRadarError(false);
+      try {
+        const uId = user?.id || "guest-user-123";
+        const tmdbIds = items.map((i) => i.tmdb_id).join(",");
+        const res = await fetch(`/api/streaming/expiring?userId=${uId}&tmdbIds=${tmdbIds}`);
+        if (!res.ok) {
+          throw new Error("Radar no disponible");
+        }
+        const data = await res.json();
+        if (data.expiringSoon && Array.isArray(data.expiringSoon)) {
+          setExpiringList(data.expiringSoon);
+        }
+      } catch (err) {
+        console.warn("Error cargando radar de streaming:", err);
+        setRadarError(true);
+      } finally {
+        setRadarLoading(false);
+      }
+    }
+
+    loadStreamingRadar();
+  }, [user, items.length]);
+
+  // Fast map lookup for expiring titles
+  const expiringMap = React.useMemo(() => {
+    const map = new Map<number, ExpiringMovieItem>();
+    expiringList.forEach((e) => map.set(e.tmdb_id, e));
+    return map;
+  }, [expiringList]);
+
+  // Filter by runtime and expiring status, prioritizing expiring movies at the top
+  const filteredItems = React.useMemo(() => {
+    let list = items.filter((item) => {
+      if (filterExpiringOnly && !expiringMap.has(item.tmdb_id)) {
+        return false;
+      }
+      const runtime = item.movie?.runtime;
+      if (runtimeFilter === "all") return true;
+      if (!runtime) return false;
+      const maxMinutes = parseInt(runtimeFilter, 10);
+      return runtime <= maxMinutes;
+    });
+
+    // Prioritize expiring cards by moving them to the top (ordered by daysLeft ascending)
+    return [...list].sort((a, b) => {
+      const expA = expiringMap.get(a.tmdb_id);
+      const expB = expiringMap.get(b.tmdb_id);
+      if (expA && expB) {
+        return expA.daysLeft - expB.daysLeft;
+      }
+      if (expA && !expB) return -1;
+      if (!expA && expB) return 1;
+      return 0;
+    });
+  }, [items, runtimeFilter, filterExpiringOnly, expiringMap]);
 
   const handlePickRandom = () => {
     if (filteredItems.length === 0) return;
@@ -294,6 +364,71 @@ export default function WatchlistPage() {
         />
       ) : (
         <>
+          {/* Radar de Streaming: Lo que abandona tus plataformas */}
+          {expiringList.length > 0 ? (
+            <div className="relative overflow-hidden rounded-2xl border border-amber-500/40 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-600/15 p-4 sm:p-5 shadow-lg backdrop-blur-md">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-start sm:items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0 animate-pulse">
+                    <Hourglass className="w-5 h-5 text-amber-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        Radar de Streaming
+                      </span>
+                      <span className="text-xs text-amber-200/70 font-medium">Próximos 30 días</span>
+                    </div>
+                    <p className="text-sm font-semibold text-amber-100 mt-1">
+                      ⚠️ {expiringList.length} película{expiringList.length > 1 ? "s" : ""} de tu Watchlist {expiringList.length > 1 ? "están" : "está"} por salir de{" "}
+                      <span className="font-bold text-amber-300 underline decoration-amber-400/50">
+                        {Array.from(new Set(expiringList.map((e) => e.platform.name))).join(", ")}
+                      </span>{" "}
+                      — ¡Mirala{expiringList.length > 1 ? "s" : ""} antes de que sea tarde!
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => setShowExpiringModal(true)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs transition shadow-md shadow-amber-500/20 active:scale-95"
+                  >
+                    <Hourglass className="w-3.5 h-3.5" />
+                    <span>Ver cuáles</span>
+                  </button>
+
+                  <button
+                    onClick={() => setFilterExpiringOnly(!filterExpiringOnly)}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition ${
+                      filterExpiringOnly
+                        ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                        : "bg-black/30 hover:bg-black/50 text-amber-200/80 border-amber-500/20"
+                    }`}
+                  >
+                    {filterExpiringOnly ? "Ver todas" : "Solo urgentes"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : radarError ? (
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-zinc-400">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-zinc-400 shrink-0" />
+                <span>El radar de streaming no está disponible en este momento. Revisá manualmente en JustWatch.</span>
+              </div>
+              <a
+                href="https://www.justwatch.com/es"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-red-400 hover:text-red-300 font-semibold underline shrink-0"
+              >
+                <span>Ir a JustWatch</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          ) : null}
+
           {/* Top Banner and Actions */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -558,18 +693,33 @@ export default function WatchlistPage() {
         <div className="text-center py-20 bg-[#141420]/50 rounded-3xl border border-white/5 p-8 max-w-lg mx-auto space-y-4">
           <Bookmark className="w-12 h-12 text-zinc-600 mx-auto" />
           <h2 className="text-lg font-bold text-white">
-            {items.length === 0 ? "No tienes películas en tu Watchlist" : "Ninguna película coincide con este filtro de tiempo"}
+            {filterExpiringOnly 
+              ? "No hay películas de tu Watchlist próximas a salir de streaming"
+              : items.length === 0 
+              ? "No tienes películas en tu Watchlist" 
+              : "Ninguna película coincide con este filtro de tiempo"}
           </h2>
           <p className="text-sm text-zinc-400 leading-relaxed">
-            Explora el catálogo o las tendencias para guardar las películas que deseas ver más adelante.
+            {filterExpiringOnly
+              ? "Ningún título en tu Watchlist tiene fecha de salida programada para los próximos 30 días en tus plataformas de streaming activas."
+              : "Explora el catálogo o las tendencias para guardar las películas que deseas ver más adelante."}
           </p>
-          <Link
-            href="/search"
-            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-red-600 text-white font-semibold text-xs transition"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Descubrir películas</span>
-          </Link>
+          {filterExpiringOnly ? (
+            <button
+              onClick={() => setFilterExpiringOnly(false)}
+              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-red-600 text-white font-semibold text-xs transition active:scale-95 shadow-lg shadow-red-600/30"
+            >
+              <span>Ver todas las películas</span>
+            </button>
+          ) : (
+            <Link
+              href="/search"
+              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-red-600 text-white font-semibold text-xs transition"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Descubrir películas</span>
+            </Link>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 sm:gap-4">
@@ -593,6 +743,14 @@ export default function WatchlistPage() {
                     alt={item.title || "Póster"}
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                   />
+
+                  {/* Pulsing red expiration badge */}
+                  {expiringMap.has(item.tmdb_id) && (
+                    <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-red-600/95 text-white border border-red-400/50 shadow-lg shadow-red-600/50 animate-pulse backdrop-blur-md">
+                      <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0 animate-ping" />
+                      <span>🔴 Sale de {expiringMap.get(item.tmdb_id)!.platform.name} en {expiringMap.get(item.tmdb_id)!.daysLeft}d</span>
+                    </div>
+                  )}
 
                   {runtime && (
                     <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-black/75 backdrop-blur-md text-zinc-300 border border-white/10">
@@ -619,6 +777,19 @@ export default function WatchlistPage() {
                         <Plus className="w-3.5 h-3.5" />
                         <span>Log</span>
                       </button>
+
+                      <a
+                        href={`https://www.justwatch.com/es/buscar?q=${encodeURIComponent(item.title || "")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                        }}
+                        className="p-1.5 rounded-xl bg-white/10 hover:bg-amber-500/20 text-zinc-300 hover:text-amber-300 border border-white/10 transition"
+                        title="Buscar en JustWatch"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
 
                       <button
                         onClick={(e) => {
@@ -748,6 +919,132 @@ export default function WatchlistPage() {
                 className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-xs border border-white/10 transition"
               >
                 Otra
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Streaming Radar Modal: Lo que abandona tus plataformas */}
+      {showExpiringModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setShowExpiringModal(false)}
+        >
+          <div
+            className="relative w-full max-w-2xl max-h-[85vh] bg-[#141424] border border-amber-500/30 rounded-3xl shadow-2xl flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-5 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-transparent">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                  <Hourglass className="w-5 h-5 text-amber-400" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-white text-base sm:text-lg flex items-center gap-2">
+                    <span>Radar de Streaming</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      {expiringList.length} en riesgo
+                    </span>
+                  </h3>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    Títulos de tu Watchlist que abandonan el catálogo de tus plataformas en ≤30 días
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowExpiringModal(false)}
+                className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 overflow-y-auto space-y-3 divide-y divide-white/5">
+              {expiringList.map((exp) => (
+                <div
+                  key={exp.tmdb_id}
+                  className="flex items-center gap-3.5 pt-3 first:pt-0 group hover:bg-white/5 p-2 rounded-2xl transition"
+                >
+                  <Link
+                    href={`/movie/${exp.tmdb_id}`}
+                    onClick={() => setShowExpiringModal(false)}
+                    className="w-14 aspect-[2/3] rounded-xl overflow-hidden bg-zinc-900 shrink-0 border border-white/10 shadow-md"
+                  >
+                    <img
+                      src={getImageUrl(exp.poster_path, "w200")}
+                      alt={exp.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                    />
+                  </Link>
+
+                  <div className="flex-1 min-w-0">
+                    <Link
+                      href={`/movie/${exp.tmdb_id}`}
+                      onClick={() => setShowExpiringModal(false)}
+                      className="font-bold text-white text-sm sm:text-base hover:text-amber-400 transition truncate block"
+                    >
+                      {exp.title}
+                    </Link>
+
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                        {exp.platform.name}
+                      </span>
+                      <span className="text-xs font-semibold text-rose-400 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                        Sale en {exp.daysLeft} día{exp.daysLeft > 1 ? "s" : ""}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <a
+                      href={`https://www.justwatch.com/es/buscar?q=${encodeURIComponent(exp.title)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-2 rounded-xl bg-white/5 hover:bg-amber-500/20 text-zinc-300 hover:text-amber-300 border border-white/10 transition"
+                      title="Ver en JustWatch"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+
+                    <button
+                      onClick={() => {
+                        setShowExpiringModal(false);
+                        openLogModal({
+                          id: exp.tmdb_id,
+                          title: exp.title,
+                          poster_path: exp.poster_path,
+                        });
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs transition shadow-md"
+                    >
+                      Log
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 bg-black/40">
+              <button
+                onClick={() => {
+                  setFilterExpiringOnly(true);
+                  setShowExpiringModal(false);
+                }}
+                className="text-xs text-amber-400 hover:text-amber-300 font-bold underline cursor-pointer"
+              >
+                ⚡ Filtrar vista de Watchlist solo con estos {expiringList.length} títulos
+              </button>
+              <button
+                onClick={() => setShowExpiringModal(false)}
+                className="px-5 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs transition"
+              >
+                Cerrar
               </button>
             </div>
           </div>

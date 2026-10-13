@@ -241,6 +241,8 @@ export interface DiscoverFilters {
   minRating?: number | string;
   minVotes?: number | string;
   originalLanguage?: string;
+  originCountry?: string;
+  watchMonetizationTypes?: string;
   minRuntime?: number | string;
   maxRuntime?: number | string;
 }
@@ -258,6 +260,8 @@ export async function discoverMovies(filters: DiscoverFilters = {}): Promise<TMD
     with_crew: filters.withCrew,
     with_companies: filters.withCompanies,
     with_original_language: filters.originalLanguage,
+    with_origin_country: filters.originCountry,
+    with_watch_monetization_types: filters.watchMonetizationTypes,
     "with_runtime.gte": filters.minRuntime,
     "with_runtime.lte": filters.maxRuntime,
   };

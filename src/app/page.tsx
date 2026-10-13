@@ -11,12 +11,14 @@ import {
   Calendar, 
   Star, 
   Info, 
-  ChevronRight,
-  TrendingUp,
-  Sparkles,
-  Database,
-  Ticket,
+  ChevronRight, 
+  TrendingUp, 
+  Sparkles, 
+  Database, 
+  Ticket, 
   Brain,
+  X,
+  Hourglass
 } from "lucide-react";
 import { 
   TMDBMovie, 
@@ -53,6 +55,15 @@ export default function DashboardPage() {
     streak: 0,
   });
   const [loading, setLoading] = useState(true);
+
+  // Streaming Radar Dashboard Notification state (≤7 days)
+  const [urgentExpiring, setUrgentExpiring] = useState<Array<{
+    tmdb_id: number;
+    title: string;
+    platform: { name: string };
+    daysLeft: number;
+  }>>([]);
+  const [dismissRadarNotice, setDismissRadarNotice] = useState(false);
 
   useEffect(() => {
     async function loadDashboardData() {
@@ -128,6 +139,27 @@ export default function DashboardPage() {
             streak: count > 0 ? 1 : 0,
           });
         }
+
+        // 3. Fetch Streaming Radar expiring titles (≤7 days)
+        try {
+          const uId = user ? user.id : "guest-user-123";
+          let guestTmdbIds = "";
+          if (!user && isGuest) {
+            const guestWL = JSON.parse(localStorage.getItem("filmtracker_guest_watchlist") || "[]");
+            guestTmdbIds = guestWL.map((i: any) => i.tmdb_id || i.id).join(",");
+          }
+          const radarRes = await fetch(`/api/streaming/expiring?userId=${uId}${guestTmdbIds ? `&tmdbIds=${guestTmdbIds}` : ""}`);
+          if (radarRes.ok) {
+            const radarData = await radarRes.json();
+            if (radarData.expiringSoon && Array.isArray(radarData.expiringSoon)) {
+              // Filter to urgent (≤ 7 days)
+              const urgent = radarData.expiringSoon.filter((item: any) => item.daysLeft <= 7);
+              setUrgentExpiring(urgent);
+            }
+          }
+        } catch (e) {
+          console.warn("Error cargando radar de streaming en dashboard:", e);
+        }
       } catch (err) {
         console.error("Dashboard data load error:", err);
       } finally {
@@ -148,6 +180,43 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-10">
+      {/* Streaming Radar Compact Header Notification (≤7 days) */}
+      {!dismissRadarNotice && urgentExpiring.length > 0 && (
+        <div
+          role="alert"
+          className="relative overflow-hidden rounded-2xl border border-red-500/40 bg-gradient-to-r from-red-950/80 via-[#200d14] to-red-900/40 p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xl backdrop-blur-md animate-in fade-in duration-300"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-red-600/20 border border-red-500/30 flex items-center justify-center text-red-400 shrink-0">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
+            </div>
+            <div>
+              <p className="text-xs sm:text-sm font-bold text-white leading-snug">
+                🔴 Tenés <span className="text-red-400 font-extrabold">{urgentExpiring.length} título{urgentExpiring.length > 1 ? "s" : ""}</span> en tu Watchlist que deja{urgentExpiring.length > 1 ? "n" : ""} <span className="underline decoration-red-400/50 text-red-200">{Array.from(new Set(urgentExpiring.map((i) => i.platform.name))).join(", ")}</span> esta semana.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+            <Link
+              href="/watchlist?filter=expiring"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-md shadow-red-600/30 transition active:scale-95"
+            >
+              <span>Ver urgentes</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
+
+            <button
+              onClick={() => setDismissRadarNotice(true)}
+              className="p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-white/10 transition"
+              title="Descartar notificación"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {importNotice && importNotice.userId === user?.id && (
         <div role="status" className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>

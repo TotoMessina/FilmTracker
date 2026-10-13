@@ -2,6 +2,7 @@ import Groq from 'groq-sdk';
 
 export const GROQ_MODEL_LARGE = 'openai/gpt-oss-120b';
 export const GROQ_MODEL_FAST = 'openai/gpt-oss-120b';
+export const GROQ_MODEL_SMALL = 'llama-3.1-8b-instant';
 
 /**
  * Replaces {{variable}} placeholders in a prompt template with provided values.

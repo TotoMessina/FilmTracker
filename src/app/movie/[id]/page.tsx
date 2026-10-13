@@ -38,6 +38,7 @@ import { Log } from "@/lib/supabase/types";
 import { formatRuntime, formatDate, getRatingColor } from "@/lib/utils/formatting";
 import { MovieCard } from "@/components/movies/MovieCard";
 import { ReviewCard } from "@/components/social/ReviewCard";
+import { TriggerWarningsSection } from "@/components/movies/TriggerWarningsSection";
 import { MoviePitchModal } from "@/components/movies/MoviePitchModal";
 import { RecapExpress } from "@/components/movies/RecapExpress";
 
@@ -344,6 +345,15 @@ export default function MovieDetailPage() {
               {movie.overview || "No hay sinopsis disponible en español para este título."}
             </p>
           </div>
+
+          {/* Trigger Warnings & Sensitive Content Section */}
+          <TriggerWarningsSection
+            tmdbId={movie.id}
+            title={movie.title}
+            overview={movie.overview}
+            genres={movie.genres?.map((g) => g.name)}
+            keywords={movie.keywords?.keywords?.map((k) => k.name)}
+          />
 
           {/* Cast */}
           {movie.credits?.cast && movie.credits.cast.length > 0 && (
