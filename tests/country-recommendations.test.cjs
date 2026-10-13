@@ -14,7 +14,7 @@ const helpers = compile('src/lib/services/cineMap.ts');
 function setup(options = {}) {
   const calls = { filters: [], users: [], details: [], prompts: [] };
   const history = options.history ?? [{ tmdb_id: 1, rating: 9, movie: { title: 'Favorite', genres: [{ id: 18, name: 'Drama' }] } }];
-  const movies = options.movies ?? [1, 2, 3, 4, 5, 6].map(id => ({ id, title: `Film ${id}`, release_date: id === 6 ? '2999-01-01' : '2020-01-01', production_countries: [{ iso_3166_1: id === 5 ? 'US' : 'AR' }], overview: 'Synopsis', poster_path: '/poster.jpg' }));
+  const movies = options.movies ?? [1, 2, 3, 4, 5, 6].map(id => ({ id, title: `Film ${id}`, release_date: id === 6 ? '2999-01-01' : '2020-01-01', origin_country: [id === 5 ? 'US' : 'AR'], overview: 'Synopsis', poster_path: '/poster.jpg' }));
   const db = {
     auth: { getUser: async () => ({ data: { user: options.unauthorized ? null : { id: 'signed-in-user' } } }) },
     from: () => ({ select() { return this; }, eq(key, value) { calls.users.push([key, value]); return this; }, order() { return this; }, range: async (start, end) => ({ data: history.slice(start, end + 1) }) }),
@@ -70,7 +70,7 @@ test('empty history gives actionable error without invoking AI', async () => {
   assert.equal(api.calls.prompts.length, 0);
 });
 test('sparse catalog returns honest fewer recommendations', async () => {
-  const api = setup({ movies: [{ id: 9, title: 'Rare film', release_date: '2020-01-01', production_countries: [{ iso_3166_1: 'AR' }] }] });
+  const api = setup({ movies: [{ id: 9, title: 'Rare film', release_date: '2020-01-01', origin_country: ['AR'] }] });
   const response = await api.POST(api.request());
   assert.equal(response.status, 200);
   const body = await response.json();
@@ -118,7 +118,7 @@ test('complete catalog outage is distinguished from an empty catalog', async () 
   }
 });
 test('a later detail batch failing does not discard already verified movies', async () => {
-  const movies = Array.from({ length: 14 }, (_, i) => ({ id: i + 2, title: `Film ${i}`, release_date: '2020-01-01', production_countries: [{ iso_3166_1: 'AR' }] }));
+  const movies = Array.from({ length: 14 }, (_, i) => ({ id: i + 2, title: `Film ${i}`, release_date: '2020-01-01', origin_country: ['AR'] }));
   const api = setup({ movies, detailFails: id => id >= 8 });
   assert.equal((await api.POST(api.request())).status, 200);
 });
@@ -132,7 +132,7 @@ test('persistent upstream errors stop after two attempts with safe diagnostics',
 });
 test('platform filtering uses OR and verifies subscription availability in the viewing region', async () => {
   const provider = (id, name) => ({ provider_id: id, provider_name: name });
-  const movie = (id, results) => ({ id, title: `Film ${id}`, release_date: '2020-01-01', production_countries: [{ iso_3166_1: 'JP' }], 'watch/providers': { results } });
+  const movie = (id, results) => ({ id, title: `Film ${id}`, release_date: '2020-01-01', origin_country: ['JP'], 'watch/providers': { results } });
   const api = setup({ movies: [
     movie(2, { AR: { flatrate: [provider(8, 'Netflix')] } }),
     movie(3, { AR: { flatrate: [provider(11, 'MUBI')] } }),
@@ -155,6 +155,14 @@ test('empty availability does not silently remove the platform filter', async ()
   const body = await response.json();
   assert.deepEqual(body.recommendations, []);
   assert.match(body.notice, /quitar el filtro/);
+  assert.equal(api.calls.prompts.length, 0);
+});
+test('a production credit is not enough for country recommendations', async () => {
+  const movie = { id: 265195, title: 'Relatos salvajes', release_date: '2014-08-21', origin_country: ['AR'], production_countries: [{ iso_3166_1: 'FR' }] };
+  const api = setup({ movies: [movie] });
+  const response = await api.POST(api.request({ countryCode: 'FR' }));
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).recommendations, []);
   assert.equal(api.calls.prompts.length, 0);
 });
 test('invalid provider and region inputs are rejected before external calls', async () => {

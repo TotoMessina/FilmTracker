@@ -229,9 +229,8 @@ export const ALL_BADGES: BadgeDefinition[] = [
     check: (logs) => {
       const datesCount: Record<string, number> = {};
       for (const log of logs) {
-        const dateStr = log.watched_at || log.created_at;
-        if (!dateStr) continue;
-        const d = dateStr.split("T")[0];
+        if (!log.watched_at) continue;
+        const d = log.watched_at.split("T")[0];
         datesCount[d] = (datesCount[d] || 0) + 1;
         if (datesCount[d] >= 3) return true;
       }

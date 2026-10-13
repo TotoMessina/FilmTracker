@@ -21,7 +21,7 @@ function CountryList({ countries, onSelectCountry }: { countries: CineMapCountry
   return <ul className="grid sm:grid-cols-2 gap-3">{countries.map(country => <li key={country.countryCode} className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2">
     <div className="flex items-center justify-between gap-2"><h3 className="font-bold text-sm text-white">{countryFlag(country.countryCode)} {country.countryName}</h3><span className="text-red-300 text-sm shrink-0">{country.count} vistas</span></div>
     <p className="text-xs text-zinc-400">Nota promedio: {country.avgRating === null ? 'sin puntaje' : `${country.avgRating.toFixed(1)}/10`}</p>
-    <ul className="space-y-1">{country.movies.map(movie => <li key={movie.id}><Link href={`/movie/${movie.id}`} className="text-xs text-zinc-300 hover:text-white hover:underline">{movie.title}</Link></li>)}</ul>
+    <ul className="space-y-1">{country.movies.map(movie => <li key={movie.id}><Link href={`/movie/${movie.id}`} className="text-xs text-zinc-300 hover:text-white hover:underline">{movie.title}</Link>{movie.productionCountries.length > 0 && <details className="mt-1 text-xs text-zinc-500"><summary className="cursor-pointer">Producción según TMDB</summary><p>{movie.productionCountries.join(', ')}. Este dato no suma países al pasaporte.</p></details>}</li>)}</ul>
     <button onClick={() => onSelectCountry(country.countryCode)} className="text-xs font-semibold text-red-300 hover:text-red-200">✨ Recomendarme películas</button>
   </li>)}</ul>;
 }
@@ -64,7 +64,7 @@ export default function CineMapCard({ userId }: { userId: string }) {
       <label className="block text-sm text-zinc-300">Dónde vas a mirar
         <select value={watchRegion} onChange={event => setWatchRegion(event.target.value)} className="block mt-2 w-full sm:w-64 rounded-xl border border-white/15 bg-zinc-900 p-2 text-white">{destinations.map(code => <option key={code} value={code}>{countryFlag(code)} {countryName(code)}</option>)}</select>
       </label>
-      <p className="text-xs text-zinc-400">Elegí una o varias plataformas antes de seleccionar un país. Buscamos películas incluidas en la suscripción de cualquiera de ellas, sin alquiler ni compra. La región de disponibilidad es independiente del país de producción.</p>
+      <p className="text-xs text-zinc-400">Elegí una o varias plataformas antes de seleccionar un país. Buscamos películas incluidas en la suscripción de cualquiera de ellas, sin alquiler ni compra. La región de disponibilidad es independiente del país de origen.</p>
     </fieldset>
     <label className="block text-sm text-zinc-300">Explorá un país con IA según tu historial
       <select aria-label="País para recomendaciones" value="" onChange={event => { if (event.target.value) selectCountry(event.target.value); }} className="block mt-2 w-full rounded-xl border border-white/15 bg-zinc-900 p-3 text-white"><option value="">Elegí tu próximo destino…</option>{destinations.map(code => <option key={code} value={code}>{countryFlag(code)} {countryName(code)}</option>)}</select>
@@ -85,8 +85,8 @@ export default function CineMapCard({ userId }: { userId: string }) {
         </aside>
       </div>
       {desktop && countries.length > 0 && <details className="rounded-2xl border border-white/10 p-4"><summary className="cursor-pointer text-sm text-zinc-300 font-semibold">Todos los países y territorios ({countries.length})</summary><div className="mt-4"><CountryList countries={countries} onSelectCountry={selectCountry} /></div></details>}
-      <p className="text-xs text-zinc-500 leading-relaxed">{logs.length} visionados · {insights.unknown} sin país conocido. Las coproducciones suman una visita en cada país y las revisitas cuentan. El promedio excluye puntajes vacíos. La diversidad usa 193 miembros de la ONU y 2 observadores; los territorios se muestran aparte del cálculo. Algunos países pequeños solo aparecen en el listado.</p>
-      <p className="text-xs text-zinc-600">Países de producción: TMDB · Cartografía: <a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer" className="underline">Natural Earth</a></p>
+      <p className="text-xs text-zinc-500 leading-relaxed">{logs.length} visionados · {insights.unknown} sin país conocido. Contamos los países de origen indicados por TMDB, no los países de producción ni los lugares de rodaje. Si hay varios orígenes, cada uno suma una visita. Las revisitas cuentan. El promedio excluye puntajes vacíos. La diversidad usa 193 miembros de la ONU y 2 observadores; los territorios se muestran aparte del cálculo. Algunos países pequeños solo aparecen en el listado.</p>
+      <p className="text-xs text-zinc-600">Países de origen: TMDB · Cartografía: <a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer" className="underline">Natural Earth</a></p>
     </>}
   </section>;
 }

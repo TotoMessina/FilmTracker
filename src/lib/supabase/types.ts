@@ -33,6 +33,7 @@ export interface CastMember {
 }
 
 export interface Movie {
+  origin_country?: string[] | null;
   tmdb_id: number;
   title: string;
   poster_path: string | null;

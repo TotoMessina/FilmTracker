@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS public.movies (
     runtime INTEGER, -- En minutos
     genres JSONB DEFAULT '[]'::jsonb, -- Array de {id, name}
     production_countries JSONB DEFAULT '[]'::jsonb, -- Array de {iso_3166_1, name}
+    origin_country TEXT[], -- TMDB origins; NULL until enriched, never inferred from production
     production_companies JSONB DEFAULT '[]'::jsonb, -- Array de {id, name, logo_path, origin_country}
     cast_data JSONB DEFAULT '[]'::jsonb, -- Array de {id, name, character, profile_path}
     vote_average NUMERIC,

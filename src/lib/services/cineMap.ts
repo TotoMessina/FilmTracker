@@ -5,7 +5,7 @@ export interface CineMapCountry {
   countryName: string;
   count: number;
   avgRating: number | null;
-  movies: { id: number; title: string }[];
+  movies: { id: number; title: string; productionCountries: string[] }[];
 }
 const names = new Intl.DisplayNames(['es'], { type: 'region' });
 // 193 UN member states plus Palestine and the Holy See. Territories remain visible but do not inflate this denominator.
@@ -26,33 +26,37 @@ export function normaliseCountries(value: unknown): ProductionCountry[] {
   return [...countries.values()];
 }
 
+export function originCountries(value: unknown): ProductionCountry[] {
+  return normaliseCountries(Array.isArray(value) ? value.map(code => ({ iso_3166_1: code })) : []);
+}
+
 export function getCineMapStats(logs: Log[]): CineMapCountry[] {
   const countries = new Map<string, CineMapCountry & { sum: number; rated: number }>();
-  for (const log of logs) for (const country of normaliseCountries(log.movie?.production_countries)) {
+  for (const log of logs) for (const country of originCountries(log.movie?.origin_country)) {
     const item = countries.get(country.iso_3166_1) || { countryCode: country.iso_3166_1, countryName: country.name, count: 0, avgRating: null, movies: [], sum: 0, rated: 0 };
     item.count++;
     if (typeof log.rating === 'number' && Number.isFinite(log.rating) && log.rating >= 0 && log.rating <= 10) { item.sum += log.rating; item.rated++; }
-    if (item.movies.length < 3 && !item.movies.some(movie => movie.id === log.tmdb_id)) item.movies.push({ id: log.tmdb_id, title: log.movie?.title || `Película ${log.tmdb_id}` });
+    if (item.movies.length < 3 && !item.movies.some(movie => movie.id === log.tmdb_id)) item.movies.push({ id: log.tmdb_id, title: log.movie?.title || `Película ${log.tmdb_id}`, productionCountries: normaliseCountries(log.movie?.production_countries).map(country => country.name) });
     countries.set(country.iso_3166_1, item);
   }
   return [...countries.values()].map(({ sum, rated, ...country }) => ({ ...country, avgRating: rated ? Math.round(sum / rated * 10) / 10 : null })).sort((a, b) => b.count - a.count || a.countryName.localeCompare(b.countryName));
 }
 
 export function getCineMapInsights(logs: Log[], countries = getCineMapStats(logs)) {
-  const known = logs.filter(log => normaliseCountries(log.movie?.production_countries).length > 0);
-  const outsideUS = known.filter(log => !normaliseCountries(log.movie?.production_countries).some(country => country.iso_3166_1 === 'US')).length;
+  const known = logs.filter(log => originCountries(log.movie?.origin_country).length > 0);
+  const outsideUS = known.filter(log => !originCountries(log.movie?.origin_country).some(country => country.iso_3166_1 === 'US')).length;
   const usCount = countries.find(country => country.countryCode === 'US')?.count || 0;
   const dominant = countries[0];
   const suggested = ['JP', 'KR', 'FR', 'AR', 'IN', 'IR', 'BR', 'SN'].filter(code => code !== dominant?.countryCode).sort((a, b) => (countries.find(c => c.countryCode === a)?.count || 0) - (countries.find(c => c.countryCode === b)?.count || 0))[0];
   let suggestion: string | null = null;
   // Unknown origins must not be classified as US or foreign; require complete coverage for this threshold.
   if (logs.length && known.length === logs.length && outsideUS / logs.length < 0.1) {
-    suggestion = `🌍 ¿Sabías que el ${Math.round(usCount / logs.length * 100)}% de tu catálogo tiene producción de EE.UU.? Explorá el cine de ${countryName(suggested)} — te puede sorprender.`;
+    suggestion = `🌍 ¿Sabías que el ${Math.round(usCount / logs.length * 100)}% de tu catálogo tiene origen en EE.UU.? Explorá el cine de ${countryName(suggested)} — te puede sorprender.`;
   } else if (dominant && dominant.count / logs.length > 0.6) {
-    suggestion = `🌍 El ${Math.round(dominant.count / logs.length * 100)}% de tus visionados tiene producción de ${dominant.countryName}. Explorá el cine de ${countryName(suggested)} para ampliar tu pasaporte.`;
+    suggestion = `🌍 El ${Math.round(dominant.count / logs.length * 100)}% de tus visionados tiene origen en ${dominant.countryName}. Explorá el cine de ${countryName(suggested)} para ampliar tu pasaporte.`;
   }
   const visited = countries.filter(country => PASSPORT_COUNTRIES.has(country.countryCode)).length;
-  const european = known.filter(log => normaliseCountries(log.movie?.production_countries).some(country => EUROPE.has(country.iso_3166_1))).length;
+  const european = known.filter(log => originCountries(log.movie?.origin_country).some(country => EUROPE.has(country.iso_3166_1))).length;
   const badge = visited >= 15 ? 'Globetrotter Cinematográfico' : logs.length && usCount / logs.length > 0.6 ? 'Cinéfilo Hollywoodense' : countries.filter(country => EUROPE.has(country.countryCode)).length >= 3 && european / logs.length > 0.5 ? 'Explorador Europeo' : visited >= 5 ? 'Explorador de Fronteras' : visited ? 'Viajero en Despegue' : 'Pasaporte por estrenar';
   return { visited, diversity: visited / 195 * 100, unknown: logs.length - known.length, suggestion, badge };
 }
@@ -74,7 +78,7 @@ export async function loadCineMapLogs(userId: string, progress: (text: string) =
     logs.push(...(data || []) as Log[]);
     if (!data || data.length < 500) break;
   }
-  const missing = [...new Set(logs.filter(log => !normaliseCountries(log.movie?.production_countries).length).map(log => log.tmdb_id))];
+  const missing = [...new Set(logs.filter(log => !Array.isArray(log.movie?.origin_country)).map(log => log.tmdb_id))];
   const enriched = new Map<number, ProductionCountry[]>();
   const { data: session } = await supabase.auth.getSession();
   const headers: Record<string, string> = session.session ? { Authorization: `Bearer ${session.session.access_token}` } : {};
@@ -99,8 +103,8 @@ export async function loadCineMapLogs(userId: string, progress: (text: string) =
     if (!countries) return log;
     return { ...log, movie: {
       tmdb_id: log.tmdb_id, title: `Película ${log.tmdb_id}`, poster_path: null, backdrop_path: null, release_date: null,
-      runtime: null, genres: null, production_companies: null, cast_data: null, vote_average: null, overview: null,
-      ...log.movie, production_countries: countries,
+      runtime: null, genres: null, production_countries: null, production_companies: null, cast_data: null, vote_average: null, overview: null,
+      ...log.movie, origin_country: countries.map(country => country.iso_3166_1),
     } };
   }) };
 }

@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase/client";
-import { Log, MonthlyChallenge, UserMonthlyChallenges } from "@/lib/supabase/types";
+import { ChallengeCondition, Log, MonthlyChallenge, UserMonthlyChallenges } from "@/lib/supabase/types";
 
 export const SPANISH_MONTH_NAMES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -17,6 +17,80 @@ export function formatMonthName(monthKey: string): string {
   const monthNum = parseInt(monthStr, 10);
   const name = SPANISH_MONTH_NAMES[monthNum - 1] || "Mes";
   return `${name} ${yearStr}`;
+}
+
+/**
+ * Checks if a log has an explicit watch date that belongs to the target month (YYYY-MM).
+ * Logs where the user marked "No recuerdo la fecha" (watched_at: null) are strictly excluded.
+ */
+export function isLogEligibleForMonth(
+  log: Log,
+  targetMonthKey: string = getCurrentMonthKey()
+): boolean {
+  if (!log || !log.watched_at) return false;
+  const datePrefix = log.watched_at.split("T")[0];
+  return datePrefix.startsWith(targetMonthKey);
+}
+
+/**
+ * Evaluates if a given movie log matches a challenge condition.
+ */
+export function doesLogMatchChallengeCondition(
+  log: Log,
+  condition: ChallengeCondition
+): boolean {
+  const movie = log.movie;
+  if (!movie) return false;
+
+  const { type, value } = condition;
+  switch (type) {
+    case "decade": {
+      if (movie.release_date) {
+        const year = parseInt(movie.release_date.substring(0, 4), 10);
+        if (!isNaN(year)) {
+          const dec = Math.floor(year / 10) * 10;
+          if (dec === value) return true;
+          if (value === 1960 && year < 1975) return true;
+        }
+      }
+      return false;
+    }
+    case "country": {
+      if (value === "international") {
+        const countries = movie.production_countries?.map((c) => c.name.toLowerCase()) || [];
+        const isUsOnly =
+          countries.length === 1 &&
+          (countries[0].includes("united states") || countries[0].includes("estados unidos"));
+        return countries.length > 0 && !isUsOnly;
+      } else if (Array.isArray(value)) {
+        const valid = value.map((v) => String(v).toLowerCase());
+        const countries = movie.production_countries?.map((c) => c.name.toLowerCase()) || [];
+        return countries.some((c) => valid.some((v) => c.includes(v)));
+      } else if (typeof value === "string") {
+        const valLower = value.toLowerCase();
+        const countries = movie.production_countries?.map((c) => c.name.toLowerCase()) || [];
+        return countries.some((c) => c.includes(valLower));
+      }
+      return false;
+    }
+    case "runtime": {
+      return typeof movie.runtime === "number" && movie.runtime >= Number(value);
+    }
+    case "genre": {
+      const valLower = String(value).toLowerCase();
+      const genres = movie.genres?.map((g) => g.name.toLowerCase()) || [];
+      return genres.some((g) => g.includes(valLower));
+    }
+    case "director": {
+      if (!movie.cast_data) return false;
+      const valLower = String(value).toLowerCase();
+      return movie.cast_data.some(
+        (c) => c.character === "Director" && c.name && c.name.toLowerCase().includes(valLower)
+      );
+    }
+    default:
+      return false;
+  }
 }
 
 /**
@@ -181,7 +255,8 @@ export function generateMonthlyChallenges(
 }
 
 /**
- * Loads active monthly challenges from Supabase or localStorage, generating them if not yet present
+ * Loads active monthly challenges from Supabase or localStorage, generating them if not yet present.
+ * Synchronizes challenge counters strictly against movies watched in the target month (excluding undated logs).
  */
 export async function getOrLoadMonthlyChallenges(
   userId: string | undefined,
@@ -189,9 +264,10 @@ export async function getOrLoadMonthlyChallenges(
   targetMonth: string = getCurrentMonthKey()
 ): Promise<UserMonthlyChallenges> {
   const localKey = `filmtracker_challenges_${userId || "guest"}_${targetMonth}`;
+  let existingSet: UserMonthlyChallenges | null = null;
 
   // 1. Try Supabase if user is authenticated
-  if (userId) {
+  if (userId && userId !== "guest") {
     try {
       const { data, error } = await supabase
         .from("user_monthly_challenges")
@@ -201,7 +277,7 @@ export async function getOrLoadMonthlyChallenges(
         .maybeSingle();
 
       if (data && !error) {
-        return {
+        existingSet = {
           id: data.id,
           user_id: data.user_id,
           month: data.month,
@@ -215,14 +291,14 @@ export async function getOrLoadMonthlyChallenges(
     }
   }
 
-  // 2. Check localStorage
-  if (typeof window !== "undefined") {
+  // 2. Check localStorage if not found in Supabase
+  if (!existingSet && typeof window !== "undefined") {
     try {
       const stored = localStorage.getItem(localKey);
       if (stored) {
         const parsed: UserMonthlyChallenges = JSON.parse(stored);
         if (parsed.month === targetMonth && Array.isArray(parsed.challenges)) {
-          return parsed;
+          existingSet = parsed;
         }
       }
     } catch {
@@ -231,18 +307,102 @@ export async function getOrLoadMonthlyChallenges(
   }
 
   // 3. Otherwise generate fresh challenges
-  const generated = generateMonthlyChallenges(userLogs, targetMonth);
-  const newSet: UserMonthlyChallenges = {
-    id: `ch-${targetMonth}-${Date.now()}`,
-    user_id: userId || "guest",
-    month: targetMonth,
-    challenges: generated,
-    completed: false,
-    created_at: new Date().toISOString(),
+  let activeSet: UserMonthlyChallenges;
+  if (existingSet) {
+    activeSet = existingSet;
+  } else {
+    const generated = generateMonthlyChallenges(userLogs, targetMonth);
+    activeSet = {
+      id: `ch-${targetMonth}-${Date.now()}`,
+      user_id: userId || "guest",
+      month: targetMonth,
+      challenges: generated,
+      completed: false,
+      created_at: new Date().toISOString(),
+    };
+  }
+
+  // 4. Fetch all eligible logs for targetMonth (strictly excluding null watched_at and other months)
+  let monthLogs: Log[] = [];
+  if (userId && userId !== "guest") {
+    try {
+      const { data: dbLogs } = await supabase
+        .from("logs")
+        .select("*, movie:movies(*)")
+        .eq("user_id", userId)
+        .gte("watched_at", `${targetMonth}-01`)
+        .lte("watched_at", `${targetMonth}-31T23:59:59.999Z`);
+      if (dbLogs) {
+        monthLogs = (dbLogs as Log[]).filter((l) => isLogEligibleForMonth(l, targetMonth));
+      } else {
+        monthLogs = (userLogs || []).filter((l) => isLogEligibleForMonth(l, targetMonth));
+      }
+    } catch {
+      monthLogs = (userLogs || []).filter((l) => isLogEligibleForMonth(l, targetMonth));
+    }
+  } else {
+    if (typeof window !== "undefined") {
+      try {
+        const guestLogs: Log[] = JSON.parse(localStorage.getItem("filmtracker_guest_logs") || "[]");
+        monthLogs = guestLogs.filter((l) => isLogEligibleForMonth(l, targetMonth));
+      } catch {
+        monthLogs = (userLogs || []).filter((l) => isLogEligibleForMonth(l, targetMonth));
+      }
+    } else {
+      monthLogs = (userLogs || []).filter((l) => isLogEligibleForMonth(l, targetMonth));
+    }
+  }
+
+  // If userLogs contains additional logs for this month not yet in DB, include them
+  if (userLogs && userLogs.length > 0) {
+    for (const l of userLogs) {
+      if (isLogEligibleForMonth(l, targetMonth)) {
+        const exists = monthLogs.some(
+          (m) => (m.id && l.id && m.id === l.id) || (m.tmdb_id === l.tmdb_id && m.watched_at === l.watched_at)
+        );
+        if (!exists) {
+          monthLogs.push(l);
+        }
+      }
+    }
+  }
+
+  // 5. Synchronize counters strictly against eligible logs of targetMonth
+  let hasChanges = false;
+  const syncedChallenges = activeSet.challenges.map((ch) => {
+    const matchedCount = monthLogs.filter((l) => doesLogMatchChallengeCondition(l, ch.condition)).length;
+    const newCurrentCount = Math.min(matchedCount, ch.targetCount);
+    const isCompleted = newCurrentCount >= ch.targetCount;
+
+    if (ch.currentCount !== newCurrentCount || ch.completed !== isCompleted) {
+      hasChanges = true;
+    }
+
+    return {
+      ...ch,
+      currentCount: newCurrentCount,
+      completed: isCompleted,
+      completedAt: isCompleted ? (ch.completedAt || new Date().toISOString()) : null,
+    };
+  });
+
+  const allCompleted = syncedChallenges.length > 0 && syncedChallenges.every((ch) => ch.completed);
+  if (allCompleted !== activeSet.completed) {
+    hasChanges = true;
+  }
+
+  const finalSet: UserMonthlyChallenges = {
+    ...activeSet,
+    challenges: syncedChallenges,
+    completed: allCompleted,
   };
 
-  await saveMonthlyChallenges(newSet);
-  return newSet;
+  // If newly generated or if counts changed (e.g. invalid counts removed), save
+  if (!existingSet || hasChanges) {
+    await saveMonthlyChallenges(finalSet);
+  }
+
+  return finalSet;
 }
 
 /**
@@ -282,23 +442,25 @@ export async function saveMonthlyChallenges(
 }
 
 /**
- * Evaluates whether a logged movie satisfies any active challenge and updates the counters
+ * Evaluates whether a logged movie satisfies any active challenge and updates the counters.
+ * If the log is undated (watched_at: null) or from another month, returns immediately with no changes.
  */
 export function evaluateLogAgainstChallenges(
   log: Log,
-  currentChallenges: MonthlyChallenge[]
+  currentChallenges: MonthlyChallenge[],
+  targetMonthKey: string = getCurrentMonthKey()
 ): {
   updatedChallenges: MonthlyChallenge[];
   newlyCompleted: MonthlyChallenge[];
   allCompleted: boolean;
   hasChanges: boolean;
 } {
-  const movie = log.movie;
-  if (!movie) {
+  // CRITICAL: undated logs and logs from other months are strictly ineligible
+  if (!isLogEligibleForMonth(log, targetMonthKey) || !log.movie) {
     return {
       updatedChallenges: currentChallenges,
       newlyCompleted: [],
-      allCompleted: false,
+      allCompleted: currentChallenges.every((ch) => ch.completed),
       hasChanges: false,
     };
   }
@@ -309,53 +471,7 @@ export function evaluateLogAgainstChallenges(
   const updatedChallenges = currentChallenges.map((ch) => {
     if (ch.completed) return ch;
 
-    let match = false;
-    const { type, value } = ch.condition;
-
-    switch (type) {
-      case "decade": {
-        if (movie.release_date) {
-          const year = parseInt(movie.release_date.substring(0, 4), 10);
-          if (!isNaN(year)) {
-            const dec = Math.floor(year / 10) * 10;
-            if (dec === value) match = true;
-          }
-        }
-        break;
-      }
-      case "country": {
-        if (value === "international") {
-          const countries = movie.production_countries?.map((c) => c.name.toLowerCase()) || [];
-          const isUsOnly =
-            countries.length === 1 &&
-            (countries[0].includes("united states") || countries[0].includes("estados unidos"));
-          if (countries.length > 0 && !isUsOnly) match = true;
-        } else if (Array.isArray(value)) {
-          const valid = value.map((v) => String(v).toLowerCase());
-          const countries = movie.production_countries?.map((c) => c.name.toLowerCase()) || [];
-          if (countries.some((c) => valid.some((v) => c.includes(v)))) match = true;
-        } else if (typeof value === "string") {
-          const valLower = value.toLowerCase();
-          const countries = movie.production_countries?.map((c) => c.name.toLowerCase()) || [];
-          if (countries.some((c) => c.includes(valLower))) match = true;
-        }
-        break;
-      }
-      case "runtime": {
-        if (typeof movie.runtime === "number" && movie.runtime >= Number(value)) {
-          match = true;
-        }
-        break;
-      }
-      case "genre": {
-        const valLower = String(value).toLowerCase();
-        const genres = movie.genres?.map((g) => g.name.toLowerCase()) || [];
-        if (genres.some((g) => g.includes(valLower))) match = true;
-        break;
-      }
-      default:
-        break;
-    }
+    const match = doesLogMatchChallengeCondition(log, ch.condition);
 
     if (match) {
       hasChanges = true;
@@ -391,29 +507,71 @@ export function evaluateLogAgainstChallenges(
 }
 
 /**
- * Checks a new log against current monthly challenges, updates counts, saves state, and returns if any challenge was newly completed
+ * Checks a new log against current monthly challenges, updates counts, saves state, and returns if any challenge was newly completed.
+ * Guarantees that undated logs (watched_at: null) or logs outside the current month do NOT count.
  */
 export async function checkAndUpdateMonthlyChallenges(
   userId: string | undefined,
   log: Log
 ): Promise<{ newlyCompleted: MonthlyChallenge[]; allCompleted: boolean }> {
   try {
-    const activeSet = await getOrLoadMonthlyChallenges(userId);
-    const { updatedChallenges, newlyCompleted, allCompleted, hasChanges } =
-      evaluateLogAgainstChallenges(log, activeSet.challenges);
-
-    if (hasChanges) {
-      const updatedSet: UserMonthlyChallenges = {
-        ...activeSet,
-        challenges: updatedChallenges,
-        completed: allCompleted,
-      };
-      await saveMonthlyChallenges(updatedSet);
-      return { newlyCompleted, allCompleted };
+    const activeMonth = getCurrentMonthKey();
+    // Ignore immediately if movie was marked as "no recuerdo la fecha" (watched_at: null) or belongs to another month
+    if (!isLogEligibleForMonth(log, activeMonth)) {
+      return { newlyCompleted: [], allCompleted: false };
     }
+
+    // Capture previous state to detect newly completed challenges accurately
+    const localKey = `filmtracker_challenges_${userId || "guest"}_${activeMonth}`;
+    let previousChallenges: MonthlyChallenge[] = [];
+    if (userId && userId !== "guest") {
+      try {
+        const { data } = await supabase
+          .from("user_monthly_challenges")
+          .select("challenges, completed")
+          .eq("user_id", userId)
+          .eq("month", activeMonth)
+          .maybeSingle();
+        if (data?.challenges) {
+          previousChallenges = data.challenges as MonthlyChallenge[];
+        }
+      } catch {
+        // ignore
+      }
+    }
+    if (previousChallenges.length === 0 && typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem(localKey);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed.month === activeMonth && Array.isArray(parsed.challenges)) {
+            previousChallenges = parsed.challenges;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // Recalculate challenges with the new log included
+    const updatedSet = await getOrLoadMonthlyChallenges(userId, [log], activeMonth);
+
+    const newlyCompleted: MonthlyChallenge[] = [];
+    updatedSet.challenges.forEach((ch) => {
+      const prev = previousChallenges.find((p) => p.id === ch.id);
+      if (ch.completed && (!prev || !prev.completed)) {
+        newlyCompleted.push(ch);
+      }
+    });
+
+    return {
+      newlyCompleted,
+      allCompleted: updatedSet.completed,
+    };
   } catch (err) {
     console.warn("Error evaluando retos mensuales en log:", err);
   }
   return { newlyCompleted: [], allCompleted: false };
 }
+
 

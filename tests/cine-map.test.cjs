@@ -11,9 +11,19 @@ function compile(file, mocks = {}) {
   return mod.exports;
 }
 const helpers = compile('src/lib/services/cineMap.ts');
-const log = (codes, rating = null, id = 1) => ({ tmdb_id: id, rating, movie: { title: `Film ${id}`, production_countries: codes.map(iso_3166_1 => ({ iso_3166_1 })) } });
+const log = (codes, rating = null, id = 1) => ({ tmdb_id: id, rating, movie: { title: `Film ${id}`, origin_country: codes } });
 
-test('coproductions count once per country per log; zero is rated and null is excluded', () => {
+test('Wild Tales counts only Argentina regardless of its production countries', () => {
+  const row = log(['AR'], 9, 265195);
+  row.movie.production_countries = ['AR', 'ES', 'FR', 'GB'].map(iso_3166_1 => ({ iso_3166_1 }));
+  assert.deepEqual(helpers.getCineMapStats([row]).map(country => country.countryCode), ['AR']);
+  assert.equal(helpers.getCineMapInsights([row]).visited, 1);
+  delete row.movie.origin_country;
+  assert.deepEqual(helpers.getCineMapStats([row]), []);
+  assert.equal(helpers.getCineMapInsights([row]).unknown, 1);
+});
+
+test('origins count once per country per log; zero is rated and null is excluded', () => {
   const stats = helpers.getCineMapStats([log(['US', 'FR', 'US'], 0), log(['US'], 10), log(['FR'], null)]);
   assert.equal(stats.find(s => s.countryCode === 'US').count, 2);
   assert.equal(stats.find(s => s.countryCode === 'US').avgRating, 5);
@@ -61,14 +71,14 @@ test('country endpoint reads cache, persists authenticated enrichment and report
   const db = { auth: { getUser: async () => ({ data: { user: { id: 'user' } }, error: null }) }, from() {
     let writing = false;
     const query = { select() { return query; }, eq() { return query; }, maybeSingle: async () => ({ data: cached, error: null }),
-      update(payload) { writing = true; writes++; assert.deepEqual(Object.keys(payload), ['production_countries']); return query; },
+      update(payload) { writing = true; writes++; assert.deepEqual(Object.keys(payload), ['origin_country']); return query; },
       then(resolve) { resolve({ data: writing && !failWrite ? [{ tmdb_id: 1 }] : null, error: failWrite ? { message: 'Denied' } : null }); },
     }; return query;
   } };
   const route = compile('src/app/api/movies/[id]/country/route.ts', {
     'next/server': { NextResponse: { json: (data, options) => Response.json(data, options) } },
     '@/lib/supabase/client': { supabase: db, createAuthenticatedClient: () => db },
-    '@/lib/tmdb/client': { getMovieDetails: async () => { calls++; return { id: 1, production_countries: [{ iso_3166_1: 'AR' }] }; } },
+    '@/lib/tmdb/client': { getMovieDetails: async () => { calls++; return { id: 1, origin_country: ['AR'], production_countries: [{ iso_3166_1: 'FR' }] }; } },
     '@/lib/services/cineMap': helpers,
   });
   const request = token => new Request('http://localhost/api/movies/1/country', { headers: token ? { Authorization: 'Bearer test' } : {} });
@@ -81,8 +91,30 @@ test('country endpoint reads cache, persists authenticated enrichment and report
   const beforeGuest = writes;
   assert.equal((await (await route.GET(request(false), context)).json()).countries[0].iso_3166_1, 'AR');
   assert.equal(writes, beforeGuest);
-  cached = { production_countries: [{ iso_3166_1: 'FR' }] };
+  cached = { origin_country: ['FR'] };
   const beforeCache = calls;
   assert.equal((await (await route.GET(request(false), context)).json()).countries[0].iso_3166_1, 'FR');
   assert.equal(calls, beforeCache);
+  cached = { origin_country: [], production_countries: [{ iso_3166_1: 'FR' }] };
+  assert.deepEqual((await (await route.GET(request(false), context)).json()).countries, []);
+  assert.equal(calls, beforeCache);
+});
+
+test('existing production cache is enriched with origin without overwriting production data', async () => {
+  const rows = [{ tmdb_id: 265195, rating: 9, movie: { title: 'Relatos salvajes', production_countries: [{ iso_3166_1: 'FR' }] } }, log([], null, 2)];
+  const db = {
+    auth: { getSession: async () => ({ data: { session: null } }) },
+    from: () => ({ select() { return this; }, eq() { return this; }, order() { return this; }, range() { return this; }, abortSignal: async () => ({ data: rows }) }),
+  };
+  const service = compile('src/lib/services/cineMap.ts', { '../supabase/client': { supabase: db } });
+  const previousFetch = global.fetch;
+  const requests = [];
+  global.fetch = async url => { requests.push(url); return Response.json({ countries: [{ iso_3166_1: 'AR' }], persisted: false }); };
+  try {
+    const result = await service.loadCineMapLogs('user', () => {}, new AbortController().signal);
+    assert.deepEqual(requests, ['/api/movies/265195/country']);
+    assert.deepEqual(result.logs[0].movie.origin_country, ['AR']);
+    assert.deepEqual(result.logs[0].movie.production_countries, [{ iso_3166_1: 'FR' }]);
+    assert.deepEqual(service.getCineMapStats(result.logs).map(country => country.countryCode), ['AR']);
+  } finally { global.fetch = previousFetch; }
 });

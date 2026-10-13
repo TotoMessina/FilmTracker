@@ -5,6 +5,7 @@ export const TMDB_IMAGE_BASE = process.env.NEXT_PUBLIC_TMDB_IMAGE_BASE || "https
 export const TMDB_BACKDROP_BASE = process.env.NEXT_PUBLIC_TMDB_BACKDROP_BASE || "https://image.tmdb.org/t/p/original";
 
 export interface TMDBMovie {
+  origin_country?: string[];
   belongs_to_collection?: { id: number; name: string; poster_path: string | null; backdrop_path: string | null } | null;
   id: number;
   title: string;

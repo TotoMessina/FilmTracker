@@ -164,7 +164,7 @@ export default function CineWrappedPage() {
     }
 
     const yearLogs = allLogs.filter((log) => {
-      const info = getLogDateInfo(log.watched_at || log.created_at);
+      const info = getLogDateInfo(log.watched_at);
       return info && info.year === currentYear;
     });
 
@@ -184,7 +184,7 @@ export default function CineWrappedPage() {
 
     const monthCounts = new Array(12).fill(0);
     yearLogs.forEach((l) => {
-      const info = getLogDateInfo(l.watched_at || l.created_at);
+      const info = getLogDateInfo(l.watched_at);
       if (info && info.month >= 0 && info.month < 12) monthCounts[info.month]++;
     });
     const maxMonthIndex = monthCounts.reduce(
@@ -301,7 +301,7 @@ export default function CineWrappedPage() {
   // Compute Monthly Stats & check cache when selectedMonth or selectedYear changes
   const { monthlyLogs, monthlyStats } = useMemo(() => {
     const filtered = allLogs.filter((log) => {
-      const info = getLogDateInfo(log.watched_at || log.created_at);
+      const info = getLogDateInfo(log.watched_at);
       return info && info.year === selectedYear && info.month === selectedMonth;
     });
 

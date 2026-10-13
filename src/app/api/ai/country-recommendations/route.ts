@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAuthenticatedClient } from '@/lib/supabase/client';
 import { discoverMovies, getMovieDetails, STREAMING_PROVIDERS, type TMDBMovie } from '@/lib/tmdb/client';
-import { normaliseCountries, countryName } from '@/lib/services/cineMap';
+import { normaliseCountries, originCountries, countryName } from '@/lib/services/cineMap';
 
 export const maxDuration = 120;
 type History = { tmdb_id: number; rating: number | null; movie: { title: string; genres: { id: number; name: string }[] | null } | null };
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
     let detailFailures = 0;
     for (let i = 0; i < pool.length && candidates.length < 24; i += 6) {
       const details = await Promise.allSettled(pool.slice(i, i + 6).map(movie => getMovieDetails(movie.id)));
-      for (const detail of details) if (detail.status === 'fulfilled' && detail.value.production_countries?.some(country => country.iso_3166_1 === code)) {
+      for (const detail of details) if (detail.status === 'fulfilled' && originCountries(detail.value.origin_country).some(country => country.iso_3166_1 === code)) {
         const available = detail.value['watch/providers']?.results?.[watchRegion]?.flatrate || [];
         if (!providerIds.length || available.some(provider => providerIds.includes(provider.provider_id))) candidates.push(detail.value);
       }
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
     const count = Math.min(3, candidates.length);
     if (!count && (detailFailures || discovered.some(result => result.status === 'rejected'))) throw new Error('Incomplete catalog');
     const availabilityNote = providerIds.length ? `, disponibles por suscripción en las plataformas elegidas en ${countryName(watchRegion)}` : '';
-    const notice = count < 3 ? `Encontramos ${count} películas sin ver con producción verificada en ${countryName(code)}${availabilityNote} dentro del catálogo consultado.${providerIds.length ? ' Podés probar otras plataformas o quitar el filtro.' : ''}` : null;
+    const notice = count < 3 ? `Encontramos ${count} películas sin ver con origen verificado en ${countryName(code)}${availabilityNote} dentro del catálogo consultado.${providerIds.length ? ' Podés probar otras plataformas o quitar el filtro.' : ''}` : null;
     if (!count) return respond({ recommendations: [], notice });
     const sample = (rows: History[]) => rows.map(log => ({ title: log.movie?.title || `TMDB ${log.tmdb_id}`, rating: log.rating }));
     stage = 'groq';
