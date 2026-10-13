@@ -22,6 +22,8 @@ interface AppContextType {
   openLogModal: (movie: TMDBMovie | { id: number; title: string; poster_path?: string | null }, existingLog?: Log) => void;
   closeLogModal: () => void;
   onLogSaved: () => void;
+  importNotice: { userId: string; saved: number; skipped: number } | null;
+  setImportNotice: (notice: { userId: string; saved: number; skipped: number } | null) => void;
 
   // Cinema Ticket Modal
   activeCinemaTicket: Log | null;
@@ -62,6 +64,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Unread messages
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [lastUpdated, setLastUpdated] = useState(Date.now());
+  const [importNotice, setImportNotice] = useState<AppContextType['importNotice']>(null);
 
   const openAuthPrompt = (reason?: string) => {
     setAuthPromptReason(reason || "Inicia sesión o regístrate para usar esta funcionalidad.");
@@ -242,6 +245,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         openLogModal,
         closeLogModal,
         onLogSaved,
+        importNotice,
+        setImportNotice,
         activeCinemaTicket,
         openCinemaTicket,
         closeCinemaTicket,

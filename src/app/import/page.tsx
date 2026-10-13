@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Download, Upload, Loader2 } from 'lucide-react';
 import { useAuth } from '@/lib/context/AuthContext';
@@ -49,7 +50,10 @@ function MovieReview({ item, disabled, update }: { item: ReviewRow; disabled: bo
 
 export default function ImportMoviesPage() {
   const { user } = useAuth();
-  const { onLogSaved } = useApp();
+  const { onLogSaved, setImportNotice } = useApp();
+  const router = useRouter();
+  const totals = useRef({ saved: 0, skipped: 0 });
+  const [analysisComplete, setAnalysisComplete] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [scale, setScale] = useState(10);
   const [items, setItems] = useState<ReviewRow[]>([]);
@@ -63,6 +67,9 @@ export default function ImportMoviesPage() {
   async function analyze() {
     if (!file || !user || busy) return;
     setBusy(true); setError(''); setSummary(''); setItems([]);
+    setAnalysisComplete(false);
+    setImportNotice(null);
+    totals.current = { saved: 0, skipped: 0 };
     try {
       const api = async (body: unknown) => {
         const { data } = await supabase.auth.getSession();
@@ -81,6 +88,7 @@ export default function ImportMoviesPage() {
         const result = await api({ action: 'match', rows: rows.slice(i, i + 5) });
         setItems(prev => [...prev, ...result.results.map((item: MatchedMovie) => ({ ...item, id: crypto.randomUUID() }))]);
       }
+      setAnalysisComplete(true);
       setSummary(`${rows.length} películas analizadas. Revisá las asociaciones y los datos antes de guardar.`);
     } catch (err) { setError(`${(err as Error).message} Si hay resultados parciales, podés revisar y guardar esos registros.`); }
     finally { setBusy(false); setProgress(''); }
@@ -89,6 +97,7 @@ export default function ImportMoviesPage() {
   async function save() {
     if (!user || busy) return;
     const pending = items.filter(item => item.selectedId && !item.done);
+    if (!pending.length) return;
     try { pending.forEach(item => validateMovie(item.row)); }
     catch (err) { setError((err as Error).message); return; }
     setBusy(true); setError(''); setSummary('');
@@ -115,7 +124,18 @@ export default function ImportMoviesPage() {
       } catch { failed++; update(item.id, { status: 'No se pudo guardar. Podés reintentar sin duplicar los registros guardados.' }); }
     }
     if (saved) onLogSaved();
+    totals.current.saved += saved;
+    totals.current.skipped += skipped;
+    const unresolved = items.filter(item => !item.selectedId && !item.done).length;
+    if (failed === 0 && unresolved === 0 && analysisComplete) {
+      setImportNotice({ userId: user.id, ...totals.current });
+      setProgress('Importación completada. Volviendo al inicio…');
+      router.replace('/');
+      return;
+    }
     setSummary(`${saved} importadas · ${skipped} ya existentes · ${failed} con error.`);
+    if (unresolved > 0) setError(`Quedan ${unresolved} películas sin asociar. Revisalas antes de finalizar o volvé al inicio para dejarlas sin importar.`);
+    else if (!analysisComplete && failed === 0) setError('Se guardaron los resultados parciales. El análisis del archivo no había terminado; volvé a analizarlo para procesar las películas restantes.');
     setBusy(false); setProgress('');
   }
 
@@ -136,6 +156,7 @@ export default function ImportMoviesPage() {
     {busy && <p role="status" className="flex gap-2 items-center"><Loader2 size={18} className="animate-spin" />{progress}</p>}
     {error && <p role="alert" className="text-red-400">{error}</p>}
     {summary && <p role="status" className="text-emerald-400">{summary}</p>}
+    {summary && !busy && <Link href="/" className="inline-block text-sm text-zinc-300 underline hover:text-white">Volver al inicio</Link>}
     {items.length > 0 && <section className="space-y-4">
       <h2 className="text-xl font-semibold">Revisar asociaciones</h2>
       <p className="text-sm text-zinc-400">Las coincidencias dudosas quedan sin seleccionar. Elegí la película correcta o dejala pendiente para omitirla. Las películas ya registradas se omiten sin modificar sus puntajes. Las fechas vacías quedan como desconocidas.</p>

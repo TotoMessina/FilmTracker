@@ -1,7 +1,7 @@
 import { supabase } from "@/lib/supabase/client";
-import { Profile, SharedWatchlist, SharedWatchlistMovie, SharedWatchlistMember } from "@/lib/supabase/types";
+import { Profile, SharedWatchlist } from "@/lib/supabase/types";
 
-const LOCAL_STORAGE_KEY_PREFIX = "filmtracker_shared_watchlists_";
+
 
 /**
  * Retrieves mutual followers (friends who follow each other) for a given user strictly from Supabase.
@@ -25,14 +25,14 @@ export async function getMutualFollowers(userId: string): Promise<Profile[]> {
       .eq("following_id", userId);
 
     const followingProfiles = (followingData || [])
-      .map((r: any) => r.following)
+      .map((r) => r.following as unknown as Profile)
       .filter(Boolean) as Profile[];
 
     const followerIds = new Set(
       (followerData || [])
-        .map((r: any) => r.follower)
+        .map((r) => r.follower as unknown as Profile)
         .filter(Boolean)
-        .map((p: any) => p.id)
+        .map((p) => p.id)
     );
 
     // Mutuals: Intersection of following and followers
@@ -63,124 +63,37 @@ export async function getMutualFollowers(userId: string): Promise<Profile[]> {
   return [];
 }
 
-/**
- * Reads all shared watchlists where the user is either the creator or a member.
- */
+/** The shared database row is authoritative for every participant. */
 export async function getSharedWatchlists(userId: string): Promise<SharedWatchlist[]> {
-  const localKey = `${LOCAL_STORAGE_KEY_PREFIX}${userId}`;
-  let localData: SharedWatchlist[] = [];
-
-  try {
-    const raw = localStorage.getItem(localKey);
-    if (raw) {
-      localData = JSON.parse(raw);
-    }
-  } catch (err) {
-    console.warn("Could not read local shared watchlists:", err);
-  }
-
-  try {
-    const { data, error } = await supabase
-      .from("shared_watchlists")
-      .select("*")
-      .order("updated_at", { ascending: false });
-
-    if (!error && Array.isArray(data)) {
-      // Filter where user is creator or member
-      const userLists = (data as SharedWatchlist[]).filter(
-        (list) =>
-          list.created_by === userId ||
-          (Array.isArray(list.members) && list.members.some((m) => m.id === userId))
-      );
-
-      if (userLists.length > 0) {
-        try {
-          localStorage.setItem(localKey, JSON.stringify(userLists));
-        } catch (e) {
-          // ignore
-        }
-        return userLists;
-      }
-    }
-  } catch (err) {
-    console.warn("Supabase shared_watchlists fetch fallback:", err);
-  }
-
-  return localData;
+  if (!userId || userId.startsWith('guest')) return [];
+  const { data, error } = await supabase.from('shared_watchlists').select('*')
+    .or(`created_by.eq.${userId},members.cs.${JSON.stringify([{ id: userId }])}`)
+    .order('updated_at', { ascending: false });
+  if (error) throw new Error('No se pudieron cargar las listas compartidas. Intentá nuevamente.');
+  return (data || []) as SharedWatchlist[];
 }
 
-/**
- * Saves or updates a shared watchlist in Supabase and localStorage.
- */
-export async function saveSharedWatchlist(watchlist: SharedWatchlist): Promise<void> {
-  const now = new Date().toISOString();
-  const updatedList: SharedWatchlist = {
-    ...watchlist,
-    updated_at: now,
-  };
-
-  // 1. Update in creator and members' localStorage for instant sync
-  const targetUserIds = [
-    updatedList.created_by,
-    ...(updatedList.members || []).map((m) => m.id),
-  ];
-
-  targetUserIds.forEach((uid) => {
-    try {
-      const key = `${LOCAL_STORAGE_KEY_PREFIX}${uid}`;
-      const existing: SharedWatchlist[] = JSON.parse(localStorage.getItem(key) || "[]");
-      const idx = existing.findIndex((w) => w.id === updatedList.id);
-      let nextLists: SharedWatchlist[];
-      if (idx >= 0) {
-        nextLists = [...existing];
-        nextLists[idx] = updatedList;
-      } else {
-        nextLists = [updatedList, ...existing];
-      }
-      localStorage.setItem(key, JSON.stringify(nextLists));
-    } catch (e) {
-      // ignore
-    }
-  });
-
-  // 2. Persist to Supabase
-  try {
-    await supabase.from("shared_watchlists").upsert({
-      id: updatedList.id,
-      title: updatedList.title,
-      description: updatedList.description || null,
-      created_by: updatedList.created_by,
-      members: updatedList.members || [],
-      movies: updatedList.movies || [],
-      created_at: updatedList.created_at,
-      updated_at: now,
-    });
-  } catch (err) {
-    console.warn("Could not upsert to Supabase shared_watchlists (fallback active):", err);
+/** Creation and edition must be separate: upsert requires creator-only INSERT permission. */
+export async function saveSharedWatchlist(watchlist: SharedWatchlist, create = false): Promise<SharedWatchlist> {
+  const now = new Date(Math.max(Date.now(), (Date.parse(watchlist.updated_at || '') || 0) + 1)).toISOString();
+  const table = supabase.from('shared_watchlists');
+  let query;
+  if (create) {
+    query = table.insert({ ...watchlist, updated_at: now });
+  } else {
+    // Compare the version we read so simultaneous edits cannot erase another member's movies.
+    if (!watchlist.updated_at) throw new Error('Recargá la lista antes de modificarla.');
+    query = table.update({ movies: watchlist.movies, updated_at: now })
+      .eq('id', watchlist.id).eq('updated_at', watchlist.updated_at);
   }
+  const { data, error } = await query.select('*').maybeSingle();
+  if (error) throw new Error('No se pudo guardar la lista compartida. Revisá tu conexión y tus permisos e intentá nuevamente.');
+  if (!data) throw new Error('La lista cambió o ya no tenés acceso. Se actualizará para que puedas reintentar.');
+  return data as SharedWatchlist;
 }
 
-/**
- * Deletes a shared watchlist.
- */
 export async function deleteSharedWatchlist(watchlistId: string, userId: string): Promise<void> {
-  // 1. Remove from localStorage
-  try {
-    const key = `${LOCAL_STORAGE_KEY_PREFIX}${userId}`;
-    const existing: SharedWatchlist[] = JSON.parse(localStorage.getItem(key) || "[]");
-    const filtered = existing.filter((w) => w.id !== watchlistId);
-    localStorage.setItem(key, JSON.stringify(filtered));
-  } catch (err) {
-    console.warn("Could not remove from local storage:", err);
-  }
-
-  // 2. Remove from Supabase
-  try {
-    await supabase
-      .from("shared_watchlists")
-      .delete()
-      .eq("id", watchlistId);
-  } catch (err) {
-    console.warn("Could not delete from Supabase shared_watchlists:", err);
-  }
+  const { data, error } = await supabase.from('shared_watchlists').delete()
+    .eq('id', watchlistId).eq('created_by', userId).select('id').maybeSingle();
+  if (error || !data) throw new Error('No se pudo eliminar la lista. Solo su creador puede borrarla.');
 }

@@ -38,7 +38,7 @@ import { formatRuntime, formatDate, getRatingColor } from "@/lib/utils/formattin
 
 export default function DashboardPage() {
   const { user, profile, isGuest } = useAuth();
-  const { openLogModal, isBlacklisted, lastUpdated } = useApp();
+  const { openLogModal, isBlacklisted, lastUpdated, importNotice, setImportNotice } = useApp();
 
   const [heroMovie, setHeroMovie] = useState<TMDBMovie | null>(null);
   const [trendingMovies, setTrendingMovies] = useState<TMDBMovie[]>([]);
@@ -148,6 +148,16 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-10">
+      {importNotice && importNotice.userId === user?.id && (
+        <div role="status" className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="font-bold text-emerald-300">Importación completada</h2>
+            <p className="text-sm text-zinc-300 mt-1">{importNotice.saved} películas cargadas · {importNotice.skipped} ya estaban en tu diario. Todas las películas del archivo quedaron procesadas.</p>
+            <Link href="/diary" className="inline-block mt-2 text-sm font-semibold text-emerald-300 hover:underline">Ver mi diario →</Link>
+          </div>
+          <button type="button" onClick={() => setImportNotice(null)} className="shrink-0 rounded-lg border border-emerald-500/30 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-500/10">Entendido</button>
+        </div>
+      )}
       {/* Hero Banner Section */}
       {heroMovie && (
         <section className="relative w-full rounded-3xl overflow-hidden border border-white/10 shadow-2xl bg-[#0c0c16]">

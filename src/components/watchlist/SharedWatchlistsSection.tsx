@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Link from "next/link";
 import { 
   Users, 
@@ -59,6 +59,10 @@ export function SharedWatchlistsSection({
   const [watchlists, setWatchlists] = useState<SharedWatchlist[]>([]);
   const [activeListId, setActiveListId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [syncError, setSyncError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const refreshRef = useRef<() => Promise<void>>(async () => {});
 
   // Modals state
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -86,32 +90,65 @@ export function SharedWatchlistsSection({
 
   // Load user's shared watchlists
   useEffect(() => {
+    let cancelled = false;
+    let requestId = 0;
     async function load() {
-      setLoading(true);
+      if (savingRef.current) return;
+      const request = ++requestId;
       try {
         const data = await getSharedWatchlists(currentUserId);
+        if (cancelled || request !== requestId || savingRef.current) return;
         setWatchlists(data);
-        if (data.length > 0 && !activeListId) {
-          setActiveListId(data[0].id);
-        }
+        const linkedId = new URLSearchParams(window.location.search).get('listId');
+        setActiveListId(previous => data.some(list => list.id === previous) ? previous : data.find(list => list.id === linkedId)?.id || data[0]?.id || null);
       } catch (err) {
-        console.warn("Error loading shared watchlists:", err);
+        if (!cancelled) setSyncError((err as Error).message);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
-    load();
+    refreshRef.current = load;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setWatchlists([]);
+      setActiveListId(null);
+      setLoading(true);
+      void load();
+    });
+    const refresh = () => { if (document.visibilityState === 'visible') void load(); };
+    // Also works when Supabase Realtime is not enabled on this table.
+    const interval = window.setInterval(refresh, 15000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
   }, [currentUserId]);
 
-  // If preselectedFriendId is passed, open create modal automatically
-  useEffect(() => {
-    if (preselectedFriendId) {
-      handleOpenCreateModal(preselectedFriendId);
+  const persistList = async (list: SharedWatchlist, create = false) => {
+    if (savingRef.current) return null;
+    savingRef.current = true;
+    setSaving(true);
+    setSyncError('');
+    try {
+      const saved = await saveSharedWatchlist(list, create);
+      setWatchlists(previous => create ? [saved, ...previous] : previous.map(item => item.id === saved.id ? saved : item));
+      return saved;
+    } catch (err) {
+      setSyncError((err as Error).message);
+      return null;
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+      void refreshRef.current();
     }
-  }, [preselectedFriendId]);
+  };
 
   // Open Create Modal and fetch mutual followers
-  const handleOpenCreateModal = async (initialFriendId?: string) => {
+  const handleOpenCreateModal = useCallback(async (initialFriendId?: string) => {
     setIsCreateOpen(true);
     setNewTitle("");
     setNewDescription("");
@@ -121,15 +158,20 @@ export function SharedWatchlistsSection({
     try {
       const mutuals = await getMutualFollowers(currentUserId);
       setMutualFollowers(mutuals);
-      if (initialFriendId && !selectedFriendIds.includes(initialFriendId)) {
-        setSelectedFriendIds([initialFriendId]);
-      }
     } catch (e) {
       console.warn("Error fetching mutuals:", e);
     } finally {
       setLoadingMutuals(false);
     }
-  };
+  }, [currentUserId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (preselectedFriendId) queueMicrotask(() => {
+      if (!cancelled) void handleOpenCreateModal(preselectedFriendId);
+    });
+    return () => { cancelled = true; };
+  }, [preselectedFriendId, handleOpenCreateModal]);
 
   const toggleFriendSelection = (friendId: string) => {
     setSelectedFriendIds((prev) =>
@@ -147,6 +189,10 @@ export function SharedWatchlistsSection({
     const selectedFriends = mutualFollowers.filter((f) =>
       selectedFriendIds.includes(f.id)
     );
+    if (selectedFriends.length !== selectedFriendIds.length) {
+      setSyncError('No se pudieron cargar todos los participantes. Volvé a seleccionarlos.');
+      return;
+    }
 
     const members: SharedWatchlistMember[] = [
       {
@@ -161,7 +207,7 @@ export function SharedWatchlistsSection({
       })),
     ];
 
-    const newListId = `swl_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    const newListId = `swl_${crypto.randomUUID()}`;
     const newWatchlist: SharedWatchlist = {
       id: newListId,
       title: newTitle.trim(),
@@ -172,8 +218,8 @@ export function SharedWatchlistsSection({
       movies: [],
     };
 
-    await saveSharedWatchlist(newWatchlist);
-    setWatchlists((prev) => [newWatchlist, ...prev]);
+    const saved = await persistList(newWatchlist, true);
+    if (!saved) return;
     setActiveListId(newListId);
     setIsCreateOpen(false);
     triggerConfetti();
@@ -211,12 +257,8 @@ export function SharedWatchlistsSection({
       movies: updatedMovies,
     };
 
-    setWatchlists((prev) =>
-      prev.map((w) => (w.id === activeList.id ? updatedList : w))
-    );
-
-    await saveSharedWatchlist(updatedList);
-    if (justWatched) {
+    const saved = await persistList(updatedList);
+    if (saved && justWatched) {
       triggerConfetti();
     }
   };
@@ -229,10 +271,7 @@ export function SharedWatchlistsSection({
       ...activeList,
       movies: updatedMovies,
     };
-    setWatchlists((prev) =>
-      prev.map((w) => (w.id === activeList.id ? updatedList : w))
-    );
-    await saveSharedWatchlist(updatedList);
+    await persistList(updatedList);
   };
 
   // Add movie to active watchlist
@@ -260,11 +299,7 @@ export function SharedWatchlistsSection({
       movies: [newMovie, ...activeList.movies],
     };
 
-    setWatchlists((prev) =>
-      prev.map((w) => (w.id === activeList.id ? updatedList : w))
-    );
-
-    await saveSharedWatchlist(updatedList);
+    await persistList(updatedList);
   };
 
   // Search TMDB live
@@ -294,8 +329,13 @@ export function SharedWatchlistsSection({
 
   // Delete shared watchlist
   const handleDeleteWatchlist = async (id: string) => {
+    if (savingRef.current) return;
     if (!window.confirm("¿Deseas eliminar esta watchlist compartida? Se borrará para todos los participantes.")) return;
-    await deleteSharedWatchlist(id, currentUserId);
+    savingRef.current = true;
+    setSaving(true);
+    setSyncError('');
+    try {
+      await deleteSharedWatchlist(id, currentUserId);
     setWatchlists((prev) => {
       const next = prev.filter((w) => w.id !== id);
       if (activeListId === id) {
@@ -303,6 +343,13 @@ export function SharedWatchlistsSection({
       }
       return next;
     });
+    } catch (err) {
+      setSyncError((err as Error).message);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+      void refreshRef.current();
+    }
   };
 
   // "🎲 ¿Qué vemos hoy?" Random Movie Picker
@@ -348,6 +395,8 @@ export function SharedWatchlistsSection({
 
   return (
     <div className="space-y-6">
+      {syncError && <div role="alert" className="fixed bottom-5 left-4 right-4 z-[80] mx-auto max-w-xl rounded-xl border border-red-500/50 bg-zinc-950 p-4 text-sm text-red-300 shadow-xl"><p>{syncError}</p><button type="button" onClick={() => { setSyncError(''); void refreshRef.current(); }} className="mt-2 font-bold underline">Actualizar listas y cerrar</button></div>}
+      {saving && <p role="status" className="text-sm text-zinc-400">Guardando para todos los participantes…</p>}
       {/* Top Banner & Watchlists selector */}
       <div className="p-6 rounded-3xl bg-[#141420] border border-white/5 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-5">
         <div className="space-y-1">
@@ -806,7 +855,7 @@ export function SharedWatchlistsSection({
                 </button>
                 <button
                   type="submit"
-                  disabled={!newTitle.trim() || selectedFriendIds.length === 0}
+                  disabled={saving || !newTitle.trim() || selectedFriendIds.length === 0}
                   className="px-6 py-2.5 rounded-2xl bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-bold text-xs shadow-lg shadow-red-600/30 transition flex items-center gap-2"
                 >
                   <Check className="w-4 h-4" />
@@ -905,7 +954,7 @@ export function SharedWatchlistsSection({
                                 vote_average: item.movie?.vote_average || null,
                               })
                             }
-                            disabled={isAdded}
+                            disabled={isAdded || saving}
                             className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition ${
                               isAdded
                                 ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 cursor-default"
@@ -995,7 +1044,7 @@ export function SharedWatchlistsSection({
                                 vote_average: movie.vote_average,
                               })
                             }
-                            disabled={isAdded}
+                            disabled={isAdded || saving}
                             className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition ${
                               isAdded
                                 ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 cursor-default"
