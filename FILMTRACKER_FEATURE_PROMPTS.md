@@ -1,7 +1,7 @@
 # 📚 FilmTracker — Guía Maestra de Prompts de Implementación
 
 > **Cómo usar este archivo:**  
-> Este documento contiene **15 prompts de desarrollo e inteligencia artificial listos para usar**.  
+> Este documento contiene **20 prompts de desarrollo e inteligencia artificial listos para usar**.  
 > Podés copiar cualquiera de estos prompts y enviárselo directamente a un asistente de código (Antigravity, Cursor, Claude Code, ChatGPT) para implementar la funcionalidad paso a paso en **FilmTracker** (Next.js 15, TypeScript, Tailwind CSS, Supabase, TMDB y Groq).
 
 ---
@@ -23,6 +23,11 @@
 13. [Collage Anual / Mensual para Redes (Grid Generator)](#13-collage-visual-para-redes)
 14. [Modo "No Sé Qué Ver" (Fast Decision Maker en 3 Clics)](#14-modo-no-sé-qué-ver)
 15. [Ranking de Tendencias Comunitarias Propias de FilmTracker](#15-ranking-de-tendencias-comunitarias)
+16. [Recap Express: Ponerme al día antes de la secuela](#16-recap-express-ponerme-al-día-antes-de-la-secuela)
+17. [Director's Cut AI: ¿Qué cineasta sos?](#17-directors-cut-ai-qué-cineasta-sos)
+18. [CineMap: Tu Pasaporte Cinematográfico Mundial](#18-cinemap-tu-pasaporte-cinematográfico-mundial)
+19. [Detector de Trigger Warnings y Contenido Sensible](#19-detector-de-trigger-warnings-y-contenido-sensible)
+20. [Radar de Streaming: Lo que abandona tus plataformas](#20-radar-de-streaming-lo-que-abandona-tus-plataformas)
 
 ---
 
@@ -387,4 +392,212 @@ Implementá las "Tendencias Comunitarias de FilmTracker":
 2. UI en el Dashboard (src/app/page.tsx) o en Comunidad (/social):
    - Sección "🔥 En la pantalla de FilmTracker esta semana":
    - Carrusel de películas destacando cuántos cinéfilos la vieron esta semana y la nota media de la comunidad (ej. "Visto por 28 usuarios • 8.4★ promedio").
+```
+
+---
+
+## 16. Recap Express: Ponerme al día antes de la secuela
+
+### 🎯 Objetivo
+En la ficha de cualquier secuela o saga (ej. *Dune: Parte Dos*, *Gladiador II*, *Deadpool & Wolverine*), ofrecer un botón **"Recap Express (2 min)"** que dispara una generación de IA con un resumen estructurado sin spoilers innecesarios, centrado únicamente en los puntos argumentales clave que el usuario necesita recordar antes de ver la siguiente entrega.
+
+### 💻 Prompt para el Agente de Código
+```markdown
+Implementá el "Recap Express" en la ficha de película de FilmTracker:
+
+1. Endpoint POST /api/ai/recap-express:
+   - Recibir: { title: string, year: string, sequelTitle: string, genres: string[] }
+   - Usar Groq (GROQ_MODEL_LARGE, temp 0.3, max_tokens 600).
+   - System prompt: "Eres un asistente cinéfilo experto. Tu misión es hacer un recap BREVE (máx. 3 párrafos) de los puntos clave que alguien necesita recordar antes de ver una secuela. REGLA ABSOLUTA: No revelar el final ni los giros principales, solo repasar personajes, motivaciones y estado del mundo al terminar el film anterior. Tono: amigable, claro y conciso como una conversación entre amigos antes de entrar al cine."
+   - Retornar JSON: { recap: string, keyCharacters: string[], cliffhangerNote: string }
+     * recap: resumen narrativo sin spoilers duros (2-3 párrafos)
+     * keyCharacters: array de nombres de personajes clave con una frase descriptiva (ej. ["Paul Atreides — el mesías reluctante que acaba de llegar a Arrakis"])
+     * cliffhangerNote: la frase/situación del final que el usuario debería tener fresca (sin revelar cómo se resuelve)
+
+2. UI en src/app/movie/[id]/page.tsx:
+   - Detectar si la película tiene colección/saga: verificar campo belongs_to_collection de la respuesta de TMDB.
+   - Si pertenece a una saga con película previa conocida, mostrar botón con ícono de rebobinado: "⏪ Recap Express".
+   - Al hacer clic, abrir un sheet/drawer lateral (o modal) con:
+     * Header: "Antes de ver [sequelTitle]..." con el póster de la película anterior en miniatura.
+     * Sección "Personajes a recordar" con los keyCharacters en chips visuales.
+     * El texto del recap con fuente legible y bien espaciada.
+     * Sección "¿Dónde lo dejamos?" con el cliffhangerNote destacado en un box naranja/ámbar.
+     * Badge: "⚡ Generado por IA en X segundos".
+   - Estado de carga con skeleton animado durante la generación.
+   - Caché del recap en sessionStorage con key recap_[tmdb_id] para no repetir la llamada si el usuario cierra y reabre el modal en la misma sesión.
+```
+
+---
+
+## 17. Director's Cut AI: ¿Qué cineasta sos?
+
+### 🎯 Objetivo
+Un análisis profundo que compara las calificaciones, directores frecuentes, ritmos cinematográficos y preferencias de género del usuario con grandes directores de la historia del cine. El resultado es un "perfil de ADN cinematográfico" expresado como un porcentaje de afinidad con 2 o 3 cineastas icónicos, con una descripción personalizada e ingeniosa.
+
+### 💻 Prompt para el Agente de Código
+```markdown
+Implementá el "Director's Cut AI: ¿Qué cineasta sos?" en FilmTracker:
+
+1. Endpoint POST /api/ai/directors-cut:
+   - Recibir:
+     ```json
+     {
+       "topDirectors": [{"name": string, "watchCount": number, "avgRating": number}],
+       "topGenres": [{"name": string, "avgRating": number}],
+       "decadeDistribution": Record<string, number>,
+       "avgRuntime": number,
+       "totalLogs": number
+     }
+     ```
+   - Usar Groq (GROQ_MODEL_LARGE, temp 0.8).
+   - System prompt: "Eres un crítico de cine enciclopédico con humor elegante. Analiza las estadísticas de visualización y calificación de un cinéfilo para identificar con qué directores icónicos comparte ADN cinematográfico. Piensa en patrones: ¿valora la narrativa lenta y visual? ¿Es fanático del thriller de precisión? ¿Prefiere el caos creativo al orden clásico?"
+   - Retornar JSON:
+     ```json
+     {
+       "primaryDirector": { "name": string, "percentage": number, "reason": string },
+       "secondaryDirector": { "name": string, "percentage": number, "reason": string },
+       "thirdDirector": { "name": string, "percentage": number, "reason": string },
+       "headline": string,
+       "deepDive": string,
+       "blindSpot": string
+     }
+     ```
+     * headline: frase síntesis humorística (ej. "Sos un 72% Denis Villeneuve y 28% Fincher: la paciencia visual con la obsesión por el detalle")
+     * deepDive: párrafo explicativo del perfil (2-3 oraciones)
+     * blindSpot: el tipo de cine que el usuario claramente evita o infravalora
+
+2. Lógica previa en el cliente (src/app/profile/page.tsx o nueva ruta /profile/dna):
+   - Computar topDirectors: agrupar logs por director usando TMDB (campo director del endpoint /movie/{id}/credits).
+   - Construir el payload de stats desde los logs existentes del usuario en Supabase.
+
+3. UI:
+   - Ubicar en la pestaña "Mi Criterio" del perfil o como tarjeta destacada en /profile.
+   - Botón principal: "🎬 Descubrir mi ADN Cinematográfico".
+   - Resultado: tarjeta premium con fondo oscuro y gradiente.
+     * Tres chips de directores con porcentajes (barra de progreso de colores).
+     * El headline en tipografía grande y negrita.
+     * Sección colapsable "Por qué" con el deepDive.
+     * Badge de punto ciego cinematográfico: "Tu zona evitada: [blindSpot]".
+   - Opción de compartir como imagen (reutilizar lógica del Collage Generator ya implementado).
+```
+
+---
+
+## 18. CineMap: Tu Pasaporte Cinematográfico Mundial
+
+### 🎯 Objetivo
+Un mapa interactivo mundial en el perfil del usuario que se ilumina progresivamente según los países de origen de las películas registradas en su historial. Permite descubrir sesgos geográficos (exceso de Hollywood) y recibir sugerencias de cinematografías inexploradas.
+
+### 💻 Prompt para el Agente de Código
+```markdown
+Implementá el "CineMap: Pasaporte Cinematográfico Mundial" en FilmTracker:
+
+1. Obtención de datos de país por película:
+   - Al hacer join de logs con movies en Supabase, incluir el campo origin_country (guardado en la tabla movies o enriquecido desde TMDB via /movie/{id} → production_countries).
+   - Si el campo no está en la DB, crear un endpoint GET /api/movies/[id]/country que lo consulte de TMDB y lo guarde en la tabla movies.
+
+2. Procesamiento en cliente:
+   - Crear src/lib/services/cineMap.ts:
+     * Función getCineMapStats(logs): agrupa logs por país de origen, retorna { countryCode: string, countryName: string, count: number, avgRating: number }[].
+     * Detectar si más del 60% de los logs son de un solo país → generar sugerencia de diversificación.
+
+3. UI — Componente src/components/profile/CineMapCard.tsx:
+   - Usar la librería react-simple-maps (instalar) para renderizar el planisferio SVG.
+   - Colorear países con escala de intensidad basada en count (cuantos más logs, más saturado el color, de zinc-800 sin visitas a red-600 con muchas visitas).
+   - Tooltip al hover sobre cada país: nombre del país, cantidad de películas vistas, nota promedio, y 2-3 películas representativas.
+   - Panel lateral al costado del mapa:
+     * Top 5 países visitados con sus conteos.
+     * Porcentaje de diversidad mundial (países únicos / 195 posibles).
+     * Badge: "Cinéfilo Hollywoodense", "Explorador Europeo", "Globetrotter Cinematográfico", etc.
+   - Si menos del 10% de los logs son de fuera de EE.UU.: mostrar un banner de sugerencia: "🌍 ¿Sabías que el 72% de tu catálogo es norteamericano? Explorá el cine de [país sugerido] — te puede sorprender".
+
+4. Integración:
+   - Agregar la CineMapCard como pestaña "Mi Mundo" en src/app/profile/page.tsx.
+   - Responsive: en mobile mostrar un listado de países con banderas emoji en lugar del mapa SVG completo.
+```
+
+---
+
+## 19. Detector de Trigger Warnings y Contenido Sensible
+
+### 🎯 Objetivo
+Etiquetas comunitarias e inteligentes en la ficha de cada película que alertan sobre contenido potencialmente sensible o incómodo (mascotas en peligro, jump scares, violencia gráfica, etc.), ayudando al usuario a tomar decisiones informadas antes de ver algo en familia, con una cita o en un estado de ánimo vulnerable.
+
+### 💻 Prompt para el Agente de Código
+```markdown
+Implementá el "Detector de Trigger Warnings y Contenido Sensible" en FilmTracker:
+
+1. Tabla en Supabase — trigger_warnings:
+   ```sql
+   CREATE TABLE trigger_warnings (
+     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     tmdb_id integer NOT NULL,
+     category text NOT NULL,  -- ej. 'animal_death', 'jump_scares', 'graphic_violence', 'sexual_content', 'suicide_theme', 'child_peril', 'family_unfriendly'
+     label text NOT NULL,     -- ej. '⚠️ Muerte de mascotas en pantalla'
+     source text NOT NULL,    -- 'community' | 'ai'
+     reported_by uuid REFERENCES profiles(id),
+     upvotes integer DEFAULT 0,
+     created_at timestamptz DEFAULT now()
+   );
+   ```
+
+2. Endpoint POST /api/ai/trigger-warnings:
+   - Recibir: { tmdb_id: number, title: string, overview: string, genres: string[], keywords: string[] }
+   - Usar Groq (GROQ_MODEL_SMALL, temp 0.1) con un prompt estricto para detectar posibles categorías sensibles a partir del overview y keywords de TMDB.
+   - Solo sugiere warnings con alta confianza, nunca inventa contenido que no esté implícito en la sinopsis o keywords.
+   - Retornar JSON: { warnings: Array<{ category: string, label: string, confidence: 'high' | 'medium' }> }
+   - Guardar las sugerencias AI en la tabla trigger_warnings con source: 'ai'.
+
+3. Endpoint POST /api/movies/[id]/report-warning:
+   - Permite a cualquier usuario autenticado reportar un trigger warning comunitario.
+   - Body: { category: string, label: string }
+   - Guardar con source: 'community', reported_by: currentUser.id.
+   - Rate limiting: máximo 3 reportes por usuario por película.
+
+4. UI en src/app/movie/[id]/page.tsx:
+   - Sección "⚠️ Advertencias de Contenido" debajo del panel de información principal.
+   - Mostrar los warnings como chips de color ámbar/naranja: ej. [⚠️ Jump scares intensos] [⚠️ Violencia explícita].
+   - Distinguir visualmente las fuentes: un ícono de IA (✨) para los detectados automáticamente y un ícono de comunidad (👥) para los reportados por usuarios.
+   - Botón al pie de la sección: "+ Reportar contenido sensible" — abre un mini modal con las categorías predefinidas seleccionables.
+   - Upvote: los usuarios pueden votar a favor de warnings existentes para validarlos. Si un warning tiene ≥5 upvotes de community, mostrar con badge "✅ Confirmado por la comunidad".
+```
+
+---
+
+## 20. Radar de Streaming: Lo que abandona tus plataformas
+
+### 🎯 Objetivo
+Cruzar las películas de la Watchlist del usuario con los títulos que están próximos a salir del catálogo de sus plataformas de streaming activas (guardadas en su perfil). Generar alertas del tipo *"⚠️ 2 películas de tu Watchlist dejan Max en los próximos 5 días"* para que no se pierda ningún título por descuido.
+
+### 💻 Prompt para el Agente de Código
+```markdown
+Implementá el "Radar de Streaming" en FilmTracker:
+
+1. Fuente de datos de expiración:
+   - Usar la API de JustWatch (vía scraping permitido o endpoint no oficial) o la API de Streaming Availability de Rapid API (https://rapidapi.com/movie-of-the-night-movie-of-the-night-default/api/streaming-availability) para obtener fechas de expiración por plataforma y región.
+   - Crear endpoint GET /api/streaming/expiring?userId=[id]:
+     * Obtener la watchlist del usuario desde Supabase (tabla watchlist).
+     * Obtener las plataformas activas del usuario desde su perfil (tabla profiles, campo streaming_platforms).
+     * Para cada película de la watchlist, consultar la API de streaming para detectar fechas de expiración próximas (≤30 días).
+     * Retornar: { expiringSoon: Array<{ tmdb_id, title, poster_path, platform, expiresAt, daysLeft }> }
+     * Caché de 6 horas por usuario.
+
+2. Banner de alerta en src/app/watchlist/page.tsx:
+   - Al cargar la Watchlist, hacer fetch a /api/streaming/expiring.
+   - Si hay películas por expirar, mostrar un banner destacado en la parte superior:
+     * Fondo ámbar/naranja con ícono de reloj de arena.
+     * Texto: "⚠️ X película(s) de tu Watchlist están por salir de [plataformas] — ¡Mirala(s) antes de que sea tarde!"
+     * Botón: "Ver cuáles" que muestra un modal o sección filtrada con las películas urgentes.
+   - En cada tarjeta de película de la watchlist, si está en la lista de expirando:
+     * Agregar un badge rojo pulsante: "🔴 Sale de [Plataforma] en X días".
+     * Priorizar esas tarjetas moviéndolas al tope de la lista (antes que el resto).
+
+3. Notificación en el Dashboard (src/app/page.tsx):
+   - Si hay ≥1 película expirando en los próximos 7 días, mostrar una notificación compacta en el header del dashboard:
+     * "🔴 Tenés X títulos en tu Watchlist que dejan [plataforma] esta semana".
+     * Link directo a la Watchlist filtrada por "urgentes".
+
+4. Fallback si la API de streaming no está disponible:
+   - Mostrar mensaje informativo: "El radar de streaming no está disponible en este momento. Revisá manualmente en JustWatch."
+   - Link directo a JustWatch con el título pre-cargado en la búsqueda.
 ```

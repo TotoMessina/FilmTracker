@@ -31,6 +31,8 @@ import ProfileCollections from "@/components/profile/ProfileCollections";
 import { getUserCollections } from "@/lib/services/collections";
 import { StreamingPlatformsSelector } from "@/components/profile/StreamingPlatformsSelector";
 import TasteBiasAnalyzer from "@/components/profile/TasteBiasAnalyzer";
+import DirectorsCut from "@/components/profile/DirectorsCut";
+import CineMapCard from "@/components/profile/CineMapCard";
 import { MovieGridShareModal } from "@/components/profile/MovieGridShareModal";
 
 export default function UserProfilePage() {
@@ -44,7 +46,7 @@ export default function UserProfilePage() {
   const [logs, setLogs] = useState<Log[]>([]);
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [collections, setCollections] = useState<UserCollection[]>([]);
-  const [activeTab, setActiveTab] = useState<"diary" | "reviews" | "collections" | "stats" | "watchlist" | "criterion">("diary");
+  const [activeTab, setActiveTab] = useState<"diary" | "reviews" | "collections" | "stats" | "watchlist" | "criterion" | "world">("diary");
   const [isFollowing, setIsFollowing] = useState(false);
   const [isMutualFollow, setIsMutualFollow] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
@@ -58,7 +60,7 @@ export default function UserProfilePage() {
     if (typeof window !== "undefined") {
       const urlParams = new URLSearchParams(window.location.search);
       const tabParam = urlParams.get("tab");
-      if (tabParam && ["diary", "reviews", "collections", "stats", "watchlist", "criterion"].includes(tabParam)) {
+      if (tabParam && ["diary", "reviews", "collections", "stats", "watchlist", "criterion", "world"].includes(tabParam)) {
         setActiveTab(tabParam as any);
       } else if (urlParams.get("collection")) {
         setActiveTab("collections");
@@ -410,9 +412,11 @@ export default function UserProfilePage() {
           <Flame className="w-4 h-4 text-amber-400" />
           <span>Mi Criterio</span>
         </button>
+        <button onClick={() => setActiveTab('world')} className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-semibold transition shrink-0 ${activeTab === 'world' ? 'bg-red-600 text-white shadow-lg' : 'text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10'}`}><span aria-hidden="true">🌍</span> Mi Mundo</button>
       </div>
 
       {/* Tab Content Display */}
+      {activeTab === 'world' && <CineMapCard key={targetId} userId={targetId} />}
       {activeTab === "diary" && (
         <div className="space-y-3">
           {logs.length === 0 ? (
@@ -499,12 +503,15 @@ export default function UserProfilePage() {
       )}
 
       {activeTab === "criterion" && (
+        <div className="space-y-8">
+        {isMe && <DirectorsCut key={targetId} userId={targetId} username={profile.username} />}
         <TasteBiasAnalyzer
           logs={logs}
           userId={targetId}
           isMe={isMe}
           username={profile?.username}
         />
+        </div>
       )}
 
       {/* Movie Grid Share Modal */}

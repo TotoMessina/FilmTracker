@@ -20,6 +20,8 @@ import {
   Clapperboard,
   Brain,
   Dices,
+  Layers,
+  Crown,
 } from "lucide-react";
 import { useAuth } from "@/lib/context/AuthContext";
 import { useApp } from "@/lib/context/AppContext";
@@ -28,6 +30,8 @@ const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/fast-pick", label: "No Sé Qué Ver", icon: Dices, badge: "3 Clics" },
   { href: "/search", label: "Descubrir", icon: Compass },
+  { href: "/sagas", label: "Sagas & Universos", icon: Layers, badge: "Nuevo" },
+  { href: "/grandes-162", label: "Las Grandes 162", icon: Crown, badge: "Canon" },
   { href: "/diary", label: "Diario", icon: BookOpen },
   { href: "/watchlist", label: "Watchlist", icon: Bookmark },
   { href: "/stats", label: "Estadísticas", icon: BarChart3 },

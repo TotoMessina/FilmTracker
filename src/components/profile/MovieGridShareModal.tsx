@@ -16,6 +16,7 @@ import {
   Star
 } from "lucide-react";
 import { getImageUrl } from "@/lib/tmdb/client";
+import { downloadCanvas, shareCanvas } from "@/lib/utils/shareCanvas";
 
 export interface MovieGridItem {
   title: string;
@@ -293,14 +294,10 @@ export function MovieGridShareModal({
   const handleDownload = () => {
     if (!canvasRef.current) return;
     try {
-      const dataUrl = canvasRef.current.toDataURL("image/png");
       const cleanName = (customTitle || "filmtracker-collage")
         .toLowerCase()
         .replace(/[^a-z0-9]/g, "-");
-      const link = document.createElement("a");
-      link.download = `${cleanName}-${aspectRatio}.png`;
-      link.href = dataUrl;
-      link.click();
+      downloadCanvas(canvasRef.current, `${cleanName}-${aspectRatio}.png`);
 
       setDownloadSuccess(true);
       setTimeout(() => setDownloadSuccess(false), 2500);
@@ -312,21 +309,11 @@ export function MovieGridShareModal({
   const handleShare = async () => {
     if (!canvasRef.current) return;
     try {
-      const canvas = canvasRef.current;
-      canvas.toBlob(async (blob) => {
-        if (!blob) return;
-        const file = new File([blob], `filmtracker-${aspectRatio}.png`, { type: "image/png" });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            title: customTitle,
-            text: `¡Mirá mis películas favoritas en FilmTracker! ${customSubtitle}`,
-            files: [file],
-          });
-        } else {
-          // Fallback to direct download
-          handleDownload();
-        }
-      });
+      const outcome = await shareCanvas(canvasRef.current, `filmtracker-${aspectRatio}.png`, customTitle, `¡Mirá mis películas favoritas en FilmTracker! ${customSubtitle}`);
+      if (outcome === 'downloaded') {
+        setDownloadSuccess(true);
+        setTimeout(() => setDownloadSuccess(false), 2500);
+      }
     } catch (err) {
       console.warn("Share fallback:", err);
       handleDownload();

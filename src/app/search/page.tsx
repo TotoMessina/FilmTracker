@@ -458,66 +458,77 @@ function SearchContent() {
           </p>
         </div>
 
-        {/* Search Bar Input */}
-        <div className="relative flex items-center gap-2 sm:gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
+        {/* Search Bar Input & Responsive Action Toolbar */}
+        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2.5 sm:gap-3">
+          {/* Main Search Input */}
+          <div className="relative flex-1 min-w-0">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Buscar película, director, actor, productora..."
-              className="w-full pl-12 pr-10 py-3.5 rounded-2xl bg-[#141420] border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition shadow-inner text-sm sm:text-base"
+              autoComplete="off"
+              spellCheck={false}
+              className="w-full pl-12 pr-11 py-3 sm:py-3.5 rounded-2xl bg-[#141420] border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition shadow-inner text-base font-medium caret-red-500"
             />
             {searchQuery && (
               <button
+                type="button"
                 onClick={() => setSearchQuery("")}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 rounded-full text-zinc-400 hover:text-white"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1.5 rounded-full text-zinc-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                aria-label="Borrar búsqueda"
               >
                 <X className="w-4 h-4" />
               </button>
             )}
           </div>
 
-          {/* AI Scene Search Button */}
-          <button
-            onClick={() => setIsSceneModalOpen(true)}
-            className="flex items-center gap-2 px-3.5 sm:px-4 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-red-500/15 to-purple-500/15 border border-amber-500/30 text-amber-300 hover:text-white hover:border-amber-400 hover:bg-amber-500/25 transition text-xs sm:text-sm font-bold shadow-md shadow-amber-950/20 shrink-0 cursor-pointer"
-            title="Buscar película por descripción de una escena con IA"
-          >
-            <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
-            <span className="hidden md:inline">Buscar por Escena (IA)</span>
-            <span className="md:hidden">Escena IA</span>
-          </button>
+          {/* Quick Actions & Filters Bar */}
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5 shrink-0">
+            {/* AI Scene Search Button */}
+            <button
+              type="button"
+              onClick={() => setIsSceneModalOpen(true)}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3.5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-red-500/15 to-purple-500/15 border border-amber-500/30 text-amber-300 hover:text-white hover:border-amber-400 hover:bg-amber-500/25 transition text-xs sm:text-sm font-bold shadow-md shadow-amber-950/20 shrink-0 cursor-pointer active:scale-95"
+              title="Buscar película por descripción de una escena con IA"
+            >
+              <Sparkles className="w-4 h-4 text-amber-400 animate-pulse shrink-0" />
+              <span className="hidden lg:inline">Buscar por Escena (IA)</span>
+              <span className="lg:hidden">Escena IA</span>
+            </button>
 
-          {/* AI Out of Comfort Zone / El Salto de Fe Button */}
-          <button
-            onClick={() => setIsComfortModalOpen(true)}
-            className="flex items-center gap-2 px-3.5 sm:px-4 py-3.5 rounded-2xl bg-gradient-to-r from-purple-600/20 via-pink-600/20 to-amber-500/20 border border-purple-500/35 text-purple-300 hover:text-white hover:border-purple-400 hover:bg-purple-600/30 transition text-xs sm:text-sm font-bold shadow-md shadow-purple-950/20 shrink-0 cursor-pointer"
-            title="Fuera de tu Zona de Confort: El Salto de Fe"
-          >
-            <Compass className="w-4 h-4 text-purple-400 animate-pulse" />
-            <span className="hidden md:inline">Zona de Confort 🚀</span>
-            <span className="md:hidden">Salto de Fe</span>
-          </button>
+            {/* AI Out of Comfort Zone / El Salto de Fe Button */}
+            <button
+              type="button"
+              onClick={() => setIsComfortModalOpen(true)}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3.5 rounded-2xl bg-gradient-to-r from-purple-600/20 via-pink-600/20 to-amber-500/20 border border-purple-500/35 text-purple-300 hover:text-white hover:border-purple-400 hover:bg-purple-600/30 transition text-xs sm:text-sm font-bold shadow-md shadow-purple-950/20 shrink-0 cursor-pointer active:scale-95"
+              title="Fuera de tu Zona de Confort: El Salto de Fe"
+            >
+              <Compass className="w-4 h-4 text-purple-400 animate-pulse shrink-0" />
+              <span className="hidden lg:inline">Zona de Confort 🚀</span>
+              <span className="lg:hidden">Salto de Fe</span>
+            </button>
 
-          {/* Filter Drawer Toggle Button */}
-          <button
-            onClick={() => setIsFilterOpen(!isFilterOpen)}
-            className={`flex items-center gap-2 px-4 py-3.5 rounded-2xl border transition text-sm font-semibold shrink-0 ${
-              isFilterOpen || hasActiveFilters
-                ? "bg-red-600 border-red-500 text-white shadow-lg shadow-red-600/25"
-                : "bg-[#141420] border-white/10 text-zinc-300 hover:text-white hover:border-white/20"
-            }`}
-          >
-            <SlidersHorizontal className="w-4 h-4" />
-            <span className="hidden sm:inline">Filtros</span>
-            {activeFilterCount > 0 && (
-              <span className="w-5 h-5 rounded-full bg-white text-red-600 text-xs font-bold flex items-center justify-center">
-                {activeFilterCount}
-              </span>
-            )}
-          </button>
+            {/* Filter Drawer Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setIsFilterOpen(!isFilterOpen)}
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2.5 sm:py-3.5 rounded-2xl border transition text-xs sm:text-sm font-semibold shrink-0 cursor-pointer active:scale-95 ${
+                isFilterOpen || hasActiveFilters
+                  ? "bg-red-600 border-red-500 text-white shadow-lg shadow-red-600/25"
+                  : "bg-[#141420] border-white/10 text-zinc-300 hover:text-white hover:border-white/20"
+              }`}
+            >
+              <SlidersHorizontal className="w-4 h-4 shrink-0" />
+              <span>Filtros</span>
+              {activeFilterCount > 0 && (
+                <span className="w-5 h-5 rounded-full bg-white text-red-600 text-[11px] font-black flex items-center justify-center shrink-0">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -525,50 +536,53 @@ function SearchContent() {
       <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 border-b border-white/5">
         <button
           onClick={() => setSearchTab("all")}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition shrink-0 ${
+          className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition shrink-0 ${
             searchTab === "all"
               ? "bg-white text-zinc-950 shadow-md font-bold"
               : "bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10"
           }`}
         >
-          <Globe className="w-4 h-4 text-red-500" />
-          <span>Todo (Global)</span>
+          <Globe className="w-4 h-4 text-red-500 shrink-0" />
+          <span className="hidden sm:inline">Todo (Global)</span>
+          <span className="sm:hidden">Todo</span>
         </button>
 
         <button
           onClick={() => setSearchTab("movies")}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition shrink-0 ${
+          className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition shrink-0 ${
             searchTab === "movies"
               ? "bg-white text-zinc-950 shadow-md font-bold"
               : "bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10"
           }`}
         >
-          <Film className="w-4 h-4 text-rose-500" />
+          <Film className="w-4 h-4 text-rose-500 shrink-0" />
           <span>Películas</span>
         </button>
 
         <button
           onClick={() => setSearchTab("people")}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition shrink-0 ${
+          className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition shrink-0 ${
             searchTab === "people"
               ? "bg-white text-zinc-950 shadow-md font-bold"
               : "bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10"
           }`}
         >
-          <User className="w-4 h-4 text-amber-400" />
-          <span>Personas (Actores / Directores)</span>
+          <User className="w-4 h-4 text-amber-400 shrink-0" />
+          <span className="hidden sm:inline">Personas (Actores / Directores)</span>
+          <span className="sm:hidden">Personas</span>
         </button>
 
         <button
           onClick={() => setSearchTab("studios")}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition shrink-0 ${
+          className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition shrink-0 ${
             searchTab === "studios"
               ? "bg-white text-zinc-950 shadow-md font-bold"
               : "bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10"
           }`}
         >
-          <Building2 className="w-4 h-4 text-blue-400" />
-          <span>Estudios y Productoras</span>
+          <Building2 className="w-4 h-4 text-blue-400 shrink-0" />
+          <span className="hidden sm:inline">Estudios y Productoras</span>
+          <span className="sm:hidden">Estudios</span>
         </button>
       </div>
 
@@ -770,7 +784,7 @@ function SearchContent() {
 
       {/* Advanced Filters Expandable Drawer */}
       {isFilterOpen && (
-        <div className="p-6 rounded-3xl bg-[#141420] border border-white/10 space-y-6 shadow-2xl animate-in fade-in duration-200">
+        <div className="p-4 sm:p-6 rounded-3xl bg-[#141420] border border-white/10 space-y-6 shadow-2xl animate-in fade-in duration-200">
           <div className="flex items-center justify-between pb-3 border-b border-white/5">
             <div className="flex items-center gap-2 text-white font-bold text-sm">
               <Filter className="w-4 h-4 text-red-500" />

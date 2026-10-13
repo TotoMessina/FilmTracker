@@ -20,7 +20,8 @@ import {
   Building2,
   Clapperboard,
   Ticket,
-  Zap
+  Zap,
+  Layers
 } from "lucide-react";
 import { 
   TMDBMovie, 
@@ -38,6 +39,7 @@ import { formatRuntime, formatDate, getRatingColor } from "@/lib/utils/formattin
 import { MovieCard } from "@/components/movies/MovieCard";
 import { ReviewCard } from "@/components/social/ReviewCard";
 import { MoviePitchModal } from "@/components/movies/MoviePitchModal";
+import { RecapExpress } from "@/components/movies/RecapExpress";
 
 export default function MovieDetailPage() {
   const params = useParams();
@@ -258,6 +260,18 @@ export default function MovieDetailPage() {
                   </Link>
                 </div>
               )}
+
+              {movie.belongs_to_collection && (
+                <div className="pt-1.5">
+                  <Link
+                    href="/sagas"
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold bg-gradient-to-r from-red-600/20 to-amber-500/10 hover:from-red-600/30 hover:to-amber-500/20 border border-red-500/30 text-red-300 hover:text-white transition group"
+                  >
+                    <Layers className="w-3.5 h-3.5 text-red-400 group-hover:scale-110 transition-transform" />
+                    <span>Parte de la saga: <strong className="text-white underline underline-offset-2">{movie.belongs_to_collection.name}</strong></span>
+                  </Link>
+                </div>
+              )}
             </div>
 
             {/* Post-Credits Scene Banner */}
@@ -305,6 +319,7 @@ export default function MovieDetailPage() {
               </button>
 
               {/* Instant No-Spoilers Pitch Button */}
+              {movie.id === tmdbId && movie.belongs_to_collection && <RecapExpress key={movie.id} movie={movie} />}
               <button
                 onClick={() => setIsPitchModalOpen(true)}
                 className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-purple-500/15 border border-amber-500/35 hover:border-amber-400 text-amber-300 hover:text-white hover:bg-amber-500/25 text-xs sm:text-sm font-bold shadow-md shadow-amber-950/20 active:scale-95 transition cursor-pointer"

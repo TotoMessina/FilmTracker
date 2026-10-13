@@ -5,6 +5,7 @@ export const TMDB_IMAGE_BASE = process.env.NEXT_PUBLIC_TMDB_IMAGE_BASE || "https
 export const TMDB_BACKDROP_BASE = process.env.NEXT_PUBLIC_TMDB_BACKDROP_BASE || "https://image.tmdb.org/t/p/original";
 
 export interface TMDBMovie {
+  belongs_to_collection?: { id: number; name: string; poster_path: string | null; backdrop_path: string | null } | null;
   id: number;
   title: string;
   original_title?: string;
@@ -191,6 +192,35 @@ export async function getMovieDetails(id: number): Promise<TMDBMovie> {
   return fetchTMDB<TMDBMovie>(`/movie/${id}`, {
     append_to_response: "credits,watch/providers,keywords,videos,similar",
   });
+}
+
+export interface TMDBCollectionDetails {
+  id: number;
+  name: string;
+  overview?: string;
+  poster_path: string | null;
+  backdrop_path: string | null;
+  parts: TMDBMovie[];
+}
+
+export interface TMDBCollectionItem {
+  id: number;
+  name: string;
+  poster_path: string | null;
+  backdrop_path: string | null;
+  overview?: string;
+}
+
+export async function getCollectionDetails(id: number): Promise<TMDBCollectionDetails> {
+  return fetchTMDB<TMDBCollectionDetails>(`/collection/${id}`);
+}
+
+export async function searchCollections(query: string, page: number = 1): Promise<TMDBResponse<TMDBCollectionItem>> {
+  return fetchTMDB<TMDBResponse<TMDBCollectionItem>>(`/search/collection`, { query, page });
+}
+
+export async function getMovieCredits(id: number): Promise<{ crew: { id: number; name: string; job: string }[] }> {
+  return fetchTMDB(`/movie/${id}/credits`);
 }
 
 export async function getRecommendations(id: number, page: number = 1): Promise<TMDBResponse<TMDBMovie>> {
