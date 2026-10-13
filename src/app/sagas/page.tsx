@@ -127,8 +127,8 @@ export default function SagasPage() {
     async function preloadCurated() {
       const map = new Map<number, TMDBCollectionDetails>();
       
-      // Load first 12 immediately for fast visual feedback
-      const prioritySagas = CURATED_SAGAS.slice(0, 12);
+      // Load first 16 immediately for fast visual feedback
+      const prioritySagas = CURATED_SAGAS.slice(0, 16);
       await Promise.all(
         prioritySagas.map(async (saga) => {
           const details = await getCachedSagaDetails(saga.id);
@@ -141,12 +141,19 @@ export default function SagasPage() {
         setLoadingInitial(false);
       }
 
-      // Load remaining sagas asynchronously
-      const remainingSagas = CURATED_SAGAS.slice(12);
-      for (const saga of remainingSagas) {
-        const details = await getCachedSagaDetails(saga.id);
-        if (details && isMounted) {
-          map.set(saga.id, details);
+      // Load remaining sagas in fast parallel batches of 8
+      const remainingSagas = CURATED_SAGAS.slice(16);
+      const batchSize = 8;
+      for (let i = 0; i < remainingSagas.length; i += batchSize) {
+        if (!isMounted) break;
+        const batch = remainingSagas.slice(i, i + batchSize);
+        await Promise.all(
+          batch.map(async (saga) => {
+            const details = await getCachedSagaDetails(saga.id);
+            if (details) map.set(saga.id, details);
+          })
+        );
+        if (isMounted) {
           setLoadedSagas(new Map(map));
         }
       }
@@ -230,17 +237,21 @@ export default function SagasPage() {
   const filteredCuratedSagas = useMemo(() => {
     return CURATED_SAGAS.filter((saga) => {
       // Category filter
-      if (selectedCategory !== "all" && saga.category !== selectedCategory) {
-        return false;
+      if (selectedCategory !== "all") {
+        const cats = Array.isArray(saga.category) ? saga.category : [saga.category];
+        if (!cats.includes(selectedCategory)) {
+          return false;
+        }
       }
 
-      // Search query filter
+      // Search query filter (matches name, universe, tagline, and aliases)
       if (debouncedSearch) {
-        const q = debouncedSearch.toLowerCase();
+        const q = debouncedSearch.toLowerCase().trim();
         const matchesName = saga.name.toLowerCase().includes(q);
         const matchesUniverse = saga.universe.toLowerCase().includes(q);
         const matchesTagline = saga.tagline.toLowerCase().includes(q);
-        if (!matchesName && !matchesUniverse && !matchesTagline) {
+        const matchesAliases = saga.aliases?.some((a) => a.toLowerCase().includes(q));
+        if (!matchesName && !matchesUniverse && !matchesTagline && !matchesAliases) {
           return false;
         }
       }
@@ -428,8 +439,8 @@ export default function SagasPage() {
                 isCompleted: false,
               };
 
-              const backdrop = details?.backdrop_path || null;
-              const poster = details?.poster_path || null;
+              const backdrop = details?.backdrop_path || saga.backdropPath || null;
+              const poster = details?.poster_path || saga.posterPath || null;
 
               return (
                 <div
