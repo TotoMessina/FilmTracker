@@ -31,7 +31,7 @@ const NAV_ITEMS = [
   { href: "/fast-pick", label: "No Sé Qué Ver", icon: Dices, badge: "3 Clics" },
   { href: "/search", label: "Descubrir", icon: Compass },
   { href: "/sagas", label: "Sagas & Universos", icon: Layers, badge: "Nuevo" },
-  { href: "/grandes-162", label: "Las Grandes 162", icon: Crown, badge: "Canon" },
+  { href: "/grandes-163", label: "Las Grandes 163", icon: Crown, badge: "Canon" },
   { href: "/diary", label: "Diario", icon: BookOpen },
   { href: "/watchlist", label: "Watchlist", icon: Bookmark },
   { href: "/stats", label: "Estadísticas", icon: BarChart3 },
@@ -62,7 +62,12 @@ export function Sidebar({ onCloseMobile }: { onCloseMobile?: () => void }) {
 
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
+          const isMasterpieceRoute =
+            item.href === "/grandes-163" && (pathname.startsWith("/grandes-163") || pathname.startsWith("/grandes-162"));
+          const isActive =
+            isMasterpieceRoute ||
+            pathname === item.href ||
+            (item.href !== "/" && pathname.startsWith(item.href));
 
           return (
             <React.Fragment key={item.href}>
