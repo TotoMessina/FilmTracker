@@ -42,6 +42,7 @@ import { ReviewCard } from "@/components/social/ReviewCard";
 import { TriggerWarningsSection } from "@/components/movies/TriggerWarningsSection";
 import { MoviePitchModal } from "@/components/movies/MoviePitchModal";
 import { RecapExpress } from "@/components/movies/RecapExpress";
+import { MovieQuickLogInline } from "@/components/movies/MovieQuickLogInline";
 
 export default function MovieDetailPage() {
   const params = useParams();
@@ -58,6 +59,7 @@ export default function MovieDetailPage() {
   const [cinemaStatus, setCinemaStatus] = useState<CinemaStatus | null>(null);
   const [userWatchedIds, setUserWatchedIds] = useState<Set<number>>(new Set());
   const [isPitchModalOpen, setIsPitchModalOpen] = useState(false);
+  const [isQuickLogInlineOpen, setIsQuickLogInlineOpen] = useState(false);
 
   useEffect(() => {
     if (!tmdbId) return;
@@ -308,6 +310,23 @@ export default function MovieDetailPage() {
 
             {/* Action Buttons */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 pt-2">
+              {/* Opción 5: Carga Rápida Button */}
+              <button
+                onClick={() => {
+                  if (!requireAuth("registrar películas en tu diario")) return;
+                  setIsQuickLogInlineOpen(!isQuickLogInlineOpen);
+                }}
+                className={`w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 rounded-2xl border text-xs sm:text-sm font-bold shadow-lg transition active:scale-95 cursor-pointer ${
+                  isQuickLogInlineOpen
+                    ? "bg-amber-500/25 border-amber-400 text-white shadow-amber-500/30"
+                    : "bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-red-500/20 border-amber-500/40 hover:border-amber-400 text-amber-200 hover:text-white shadow-amber-950/30"
+                }`}
+                title="Carga Rápida en 1 clic (Opción 5)"
+              >
+                <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
+                <span>Carga Rápida ⚡</span>
+              </button>
+
               <button
                 onClick={() => openLogModal(movie)}
                 className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-xs sm:text-sm shadow-xl shadow-red-600/30 active:scale-95 transition"
@@ -339,6 +358,20 @@ export default function MovieDetailPage() {
                 <span>¿Por qué verla hoy? ⚡</span>
               </button>
             </div>
+
+            {/* Inline Quick Log Panel (Opción 5) */}
+            {isQuickLogInlineOpen && (
+              <div className="pt-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                <MovieQuickLogInline
+                  movie={movie}
+                  userWatched={userWatchedIds.has(tmdbId)}
+                  onClose={() => setIsQuickLogInlineOpen(false)}
+                  onLogged={() => {
+                    setUserWatchedIds((prev) => new Set(prev).add(tmdbId));
+                  }}
+                />
+              </div>
+            )}
           </div>
         </div>
       </section>

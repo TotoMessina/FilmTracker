@@ -6,6 +6,7 @@ import { Sidebar } from "./Sidebar";
 import { MobileNav } from "./MobileNav";
 import { PwaInstallPrompt } from "./PwaInstallPrompt";
 import { LogMovieModal } from "../movies/LogMovieModal";
+import { QuickLogModal } from "../movies/QuickLogModal";
 import { CinemaTicketModal } from "../movies/CinemaTicketModal";
 import { AuthPromptModal } from "../auth/AuthPromptModal";
 import { QuickRecommenderModal } from "../ai/QuickRecommenderModal";
@@ -73,6 +74,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Global Modals & Persistent AI FAB */}
       <QuickRecommenderModal />
+      <QuickLogModal />
       <LogMovieModal />
       <CinemaTicketModal />
       <AuthPromptModal />

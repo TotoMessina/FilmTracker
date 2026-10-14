@@ -26,7 +26,7 @@ interface NavbarProps {
 export function Navbar({ onToggleMobileMenu }: NavbarProps) {
   const router = useRouter();
   const { user, profile, signOut } = useAuth();
-  const { openLogModal, unreadMessagesCount, requireAuth } = useApp();
+  const { openLogModal, openQuickLogModal, unreadMessagesCount, requireAuth } = useApp();
   const [searchQuery, setSearchQuery] = useState("");
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
@@ -107,10 +107,11 @@ export function Navbar({ onToggleMobileMenu }: NavbarProps) {
           <button
             onClick={() => {
               if (requireAuth("registrar películas en tu diario")) {
-                router.push("/search");
+                openQuickLogModal();
               }
             }}
-            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-semibold text-white bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 shadow-md shadow-red-600/25 active:scale-95 transition-all"
+            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-semibold text-white bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 shadow-md shadow-red-600/25 active:scale-95 transition-all cursor-pointer"
+            title="Registro Rápido de Películas (⚡ 5 seg)"
           >
             <PlusCircle className="w-4 h-4" />
             <span className="hidden sm:inline">Registrar</span>

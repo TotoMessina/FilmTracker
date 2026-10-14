@@ -25,6 +25,12 @@ interface AppContextType {
   importNotice: { userId: string; saved: number; skipped: number } | null;
   setImportNotice: (notice: { userId: string; saved: number; skipped: number } | null) => void;
 
+  // Quick Log Modal (Option 3 & Fast-Action)
+  isQuickLogOpen: boolean;
+  quickLogMovie: TMDBMovie | { id: number; title: string; poster_path?: string | null } | null;
+  openQuickLogModal: (movie?: TMDBMovie | { id: number; title: string; poster_path?: string | null }) => void;
+  closeQuickLogModal: () => void;
+
   // Cinema Ticket Modal
   activeCinemaTicket: Log | null;
   openCinemaTicket: (log: Log) => void;
@@ -57,6 +63,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [activeLogMovie, setActiveLogMovie] = useState<TMDBMovie | null>(null);
   const [editingLog, setEditingLog] = useState<Log | null>(null);
   const [activeCinemaTicket, setActiveCinemaTicket] = useState<Log | null>(null);
+
+  // Quick Log Modal state
+  const [isQuickLogOpen, setIsQuickLogOpen] = useState(false);
+  const [quickLogMovie, setQuickLogMovie] = useState<TMDBMovie | { id: number; title: string; poster_path?: string | null } | null>(null);
 
   // Blacklist state
   const [blacklist, setBlacklist] = useState<Set<number>>(new Set());
@@ -157,6 +167,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setEditingLog(null);
   };
 
+  const openQuickLogModal = (
+    movie?: TMDBMovie | { id: number; title: string; poster_path?: string | null }
+  ) => {
+    if (!user) {
+      openAuthPrompt("Inicia sesión o crea una cuenta para registrar esta película en tu diario personal.");
+      return;
+    }
+    setQuickLogMovie(movie || null);
+    setIsQuickLogOpen(true);
+  };
+
+  const closeQuickLogModal = () => {
+    setIsQuickLogOpen(false);
+    setQuickLogMovie(null);
+  };
+
   const onLogSaved = () => {
     setLastUpdated(Date.now());
     if (typeof window !== "undefined") {
@@ -250,6 +276,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         onLogSaved,
         importNotice,
         setImportNotice,
+        isQuickLogOpen,
+        quickLogMovie,
+        openQuickLogModal,
+        closeQuickLogModal,
         activeCinemaTicket,
         openCinemaTicket,
         closeCinemaTicket,
