@@ -29,7 +29,8 @@ import {
   SAGA_CATEGORIES, 
   CuratedSaga, 
   SagaCategory, 
-  getCachedSagaDetails 
+  getCachedSagaDetails,
+  SECONDARY_SAGAS
 } from "@/lib/services/sagas";
 import { fetchAllUserLogs } from "@/lib/services/logs";
 import { 
@@ -62,9 +63,10 @@ export default function SagasPage() {
   const [loadedSagas, setLoadedSagas] = useState<Map<number, TMDBCollectionDetails>>(new Map());
   const [loadingInitial, setLoadingInitial] = useState(true);
 
-  // Dynamic TMDB Search Results
+  // Dynamic Search Results
   const [tmdbSearchResults, setTmdbSearchResults] = useState<TMDBCollectionItem[]>([]);
   const [searchingTMDB, setSearchingTMDB] = useState(false);
+  const [visibleSecondaryCount, setVisibleSecondaryCount] = useState(24);
 
   // Modal State
   const [activeSagaId, setActiveSagaId] = useState<number | null>(null);
@@ -179,10 +181,13 @@ export default function SagasPage() {
       try {
         const res = await searchCollections(debouncedSearch);
         if (isMounted && res?.results) {
-          // Filter out collections that are already in our curated list to avoid duplicates
+          // Filter out collections that are already in our curated or secondary list
           const curatedIds = new Set(CURATED_SAGAS.map((s) => s.id));
-          const uniqueResults = res.results.filter((item) => !curatedIds.has(item.id));
-          setTmdbSearchResults(uniqueResults.slice(0, 8));
+          const secondaryIds = new Set(SECONDARY_SAGAS.map((s) => s.id));
+          const uniqueResults = res.results.filter(
+            (item) => !curatedIds.has(item.id) && !secondaryIds.has(item.id)
+          );
+          setTmdbSearchResults(uniqueResults.slice(0, 12));
         }
       } catch (err) {
         console.warn("Error buscando colecciones en TMDB:", err);
@@ -267,6 +272,58 @@ export default function SagasPage() {
       return true;
     });
   }, [selectedCategory, debouncedSearch, statusFilter, sagaProgressMap]);
+
+  // Filter secondary sagas without affecting completed stats
+  const filteredSecondarySagas = useMemo(() => {
+    const curatedIds = new Set(CURATED_SAGAS.map((s) => s.id));
+    const available = SECONDARY_SAGAS.filter((s) => !curatedIds.has(s.id));
+
+    if (!debouncedSearch) return available;
+
+    const q = debouncedSearch.toLowerCase().trim();
+    return available.filter((s) => {
+      const matchesName = s.name.toLowerCase().includes(q);
+      const matchesFull = s.fullName?.toLowerCase().includes(q);
+      const matchesOverview = s.overview?.toLowerCase().includes(q);
+      return matchesName || matchesFull || matchesOverview;
+    });
+  }, [debouncedSearch]);
+
+  // Merge static secondary sagas with any extra dynamic live search matches
+  const allSecondaryItems = useMemo(() => {
+    const seen = new Set<number>();
+    const combined: Array<{
+      id: number;
+      name: string;
+      poster_path: string | null;
+      backdrop_path?: string | null;
+    }> = [];
+
+    filteredSecondarySagas.forEach((item) => {
+      if (!seen.has(item.id)) {
+        seen.add(item.id);
+        combined.push(item);
+      }
+    });
+
+    if (debouncedSearch) {
+      tmdbSearchResults.forEach((item) => {
+        if (!seen.has(item.id)) {
+          seen.add(item.id);
+          combined.push(item);
+        }
+      });
+    }
+
+    return combined;
+  }, [filteredSecondarySagas, tmdbSearchResults, debouncedSearch]);
+
+  const displayedSecondaryItems = useMemo(() => {
+    if (debouncedSearch) {
+      return allSecondaryItems;
+    }
+    return allSecondaryItems.slice(0, visibleSecondaryCount);
+  }, [allSecondaryItems, debouncedSearch, visibleSecondaryCount]);
 
   const handleOpenSaga = (id: number, curated?: CuratedSaga) => {
     setActiveSagaId(id);
@@ -547,46 +604,93 @@ export default function SagasPage() {
         )}
       </section>
 
-      {/* Dynamic TMDB Search Results Section (if searching something not in curated list) */}
-      {debouncedSearch && tmdbSearchResults.length > 0 && (
-        <section className="space-y-4 pt-6 border-t border-white/5">
-          <div className="flex items-center gap-2">
-            <Globe className="w-5 h-5 text-blue-400" />
-            <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
-              Otras colecciones encontradas en TMDB para &quot;{debouncedSearch}&quot; ({tmdbSearchResults.length})
-            </h2>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {tmdbSearchResults.map((col) => (
-              <div
-                key={col.id}
-                onClick={() => handleOpenSaga(col.id)}
-                className="group p-4 rounded-2xl bg-[#141422] border border-white/10 hover:border-blue-500/40 hover:shadow-xl transition cursor-pointer flex items-center gap-3.5"
-              >
-                <div className="w-12 aspect-[2/3] rounded-xl overflow-hidden bg-zinc-800 shrink-0">
-                  <img
-                    src={getImageUrl(col.poster_path, "w200")}
-                    alt={col.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-                  />
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <h4 className="font-bold text-sm text-white group-hover:text-blue-400 transition truncate">
-                    {col.name}
-                  </h4>
-                  <span className="text-xs text-zinc-500 block mt-0.5">
-                    Colección Oficial
+      {/* Segunda Camada: Más Colecciones y Franquicias */}
+      <section className="space-y-5 pt-8 border-t border-white/10">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-purple-400">
+                <Layers className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                    Más Franquicias y Colecciones
+                  </h2>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                    Segunda Camada
                   </span>
                 </div>
-
-                <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-white transition shrink-0" />
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Sagas complementarias, de culto o más pequeñas para explorar ({allSecondaryItems.length})
+                </p>
               </div>
-            ))}
+            </div>
           </div>
-        </section>
-      )}
+        </div>
+
+        {allSecondaryItems.length > 0 ? (
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3.5 sm:gap-4">
+              {displayedSecondaryItems.map((col) => (
+                <div
+                  key={col.id}
+                  onClick={() => handleOpenSaga(col.id)}
+                  className="group relative flex flex-col rounded-2xl overflow-hidden bg-[#12111d] border border-white/10 hover:border-purple-500/40 hover:shadow-xl hover:shadow-purple-950/20 hover:-translate-y-1 transition-all duration-300 cursor-pointer"
+                >
+                  {/* Poster Container */}
+                  <div className="relative aspect-[2/3] w-full overflow-hidden bg-zinc-900">
+                    <img
+                      src={getImageUrl(col.poster_path, "w500")}
+                      alt={col.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 filter brightness-95 group-hover:brightness-105"
+                      loading="lazy"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#12111d] via-transparent to-transparent opacity-90" />
+
+                    {/* Mini Badge */}
+                    <div className="absolute top-2 left-2 pointer-events-none">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-black/75 backdrop-blur-md border border-white/15 text-zinc-300 shadow">
+                        Colección
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Card Info */}
+                  <div className="p-3 flex-1 flex flex-col justify-between">
+                    <h4 className="font-bold text-xs sm:text-sm text-white group-hover:text-purple-400 transition-colors line-clamp-2 leading-snug">
+                      {col.name}
+                    </h4>
+                    <div className="mt-2 pt-2 border-t border-white/5 flex items-center justify-between text-[11px] text-zinc-500">
+                      <span>Ver títulos</span>
+                      <ChevronRight className="w-3.5 h-3.5 text-zinc-500 group-hover:text-white group-hover:translate-x-0.5 transition" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Pagination / Expand button */}
+            {!debouncedSearch && allSecondaryItems.length > visibleSecondaryCount && (
+              <div className="text-center pt-2">
+                <button
+                  onClick={() => setVisibleSecondaryCount((prev) => prev + 24)}
+                  className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs sm:text-sm font-semibold text-zinc-300 hover:text-white transition active:scale-95 cursor-pointer shadow-sm"
+                >
+                  Cargar más colecciones ({allSecondaryItems.length - visibleSecondaryCount} restantes)
+                </button>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-center py-10 p-6 rounded-2xl bg-[#141420]/40 border border-white/5 space-y-2">
+            <Film className="w-8 h-8 text-zinc-600 mx-auto" />
+            <p className="text-xs text-zinc-400">
+              No se encontraron colecciones adicionales para esta búsqueda.
+            </p>
+          </div>
+        )}
+      </section>
 
       {/* Modal Detail */}
       {activeSagaId && (
