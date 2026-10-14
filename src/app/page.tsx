@@ -37,6 +37,7 @@ import { CommunityTrendingCarousel } from "@/components/home/CommunityTrendingCa
 import { supabase } from "@/lib/supabase/client";
 import { Log } from "@/lib/supabase/types";
 import { formatRuntime, formatDate, getRatingColor } from "@/lib/utils/formatting";
+import { calculateActiveStreak } from "@/lib/stats";
 
 export default function DashboardPage() {
   const { user, profile, isGuest } = useAuth();
@@ -47,6 +48,7 @@ export default function DashboardPage() {
   const [topRatedMovies, setTopRatedMovies] = useState<TMDBMovie[]>([]);
   const [cinemaCatalog, setCinemaCatalog] = useState<NowPlayingCatalog | null>(null);
   const [cinemaTab, setCinemaTab] = useState<"all" | "estrenos" | "reestrenos">("all");
+  const [allLogs, setAllLogs] = useState<Log[]>([]);
   const [recentLogs, setRecentLogs] = useState<Log[]>([]);
   const [watchlistTitles, setWatchlistTitles] = useState<string[]>([]);
   const [userStats, setUserStats] = useState({
@@ -93,36 +95,50 @@ export default function DashboardPage() {
 
         // 2. Fetch User Logs, Stats & Watchlist
         if (user) {
-          const [logsRes, watchlistRes] = await Promise.all([
-            supabase
+          // Fetch all user logs (paginated if needed) to ensure 100% accurate total stats, time, streak and challenges
+          let userLogs: Log[] = [];
+          for (let offset = 0; ; offset += 500) {
+            const { data: chunk, error: chunkErr } = await supabase
               .from("logs")
               .select("*, movie:movies(*)")
               .eq("user_id", user.id)
-              .order("watched_at", { ascending: false })
-              .limit(10),
-            supabase
-              .from("watchlist")
-              .select("title, movie:movies(title)")
-              .eq("user_id", user.id),
-          ]);
-
-          const logsData = logsRes.data;
-          if (logsData) {
-            setRecentLogs(logsData as Log[]);
-            const count = logsData.length;
-            const minutes = logsData.reduce((acc, curr) => acc + (curr.movie?.runtime || 105), 0);
-
-            // Compute streak
-            const uniqueDates = Array.from(new Set(logsData.map((l) => l.watched_at))).filter(Boolean);
-            setUserStats({
-              watchedCount: count,
-              totalMinutes: minutes,
-              streak: Math.min(uniqueDates.length, 7),
-            });
+              .range(offset, offset + 499)
+              .order("watched_at", { ascending: false, nullsFirst: false });
+            if (chunkErr) break;
+            if (chunk) userLogs.push(...(chunk as Log[]));
+            if (!chunk || chunk.length < 500) break;
           }
 
-          if (watchlistRes.data) {
-            const titles = watchlistRes.data
+          setAllLogs(userLogs);
+
+          // Top 10 most recent logs (ordered by watch date, fallback to creation date)
+          const sortedRecent = [...userLogs].sort((a, b) => {
+            const timeA = new Date(a.watched_at || a.created_at || 0).getTime();
+            const timeB = new Date(b.watched_at || b.created_at || 0).getTime();
+            return timeB - timeA;
+          });
+          setRecentLogs(sortedRecent.slice(0, 10));
+
+          const count = userLogs.length;
+          const minutes = userLogs.reduce(
+            (acc, curr) => acc + (curr.movie?.runtime && curr.movie.runtime > 0 ? curr.movie.runtime : 105),
+            0
+          );
+          const streak = calculateActiveStreak(userLogs);
+
+          setUserStats({
+            watchedCount: count,
+            totalMinutes: minutes,
+            streak: streak,
+          });
+
+          const { data: wlData } = await supabase
+            .from("watchlist")
+            .select("title, movie:movies(title)")
+            .eq("user_id", user.id);
+
+          if (wlData) {
+            const titles = wlData
               .map((item: any) => item.title || item.movie?.title)
               .filter(Boolean);
             setWatchlistTitles(titles);
@@ -130,13 +146,32 @@ export default function DashboardPage() {
         } else if (isGuest) {
           // Guest mode from localStorage
           const guestLogs: Log[] = JSON.parse(localStorage.getItem("filmtracker_guest_logs") || "[]");
-          setRecentLogs(guestLogs.slice(0, 10));
+          setAllLogs(guestLogs);
+
+          const sortedGuestRecent = [...guestLogs].sort((a, b) => {
+            const timeA = new Date(a.watched_at || a.created_at || 0).getTime();
+            const timeB = new Date(b.watched_at || b.created_at || 0).getTime();
+            return timeB - timeA;
+          });
+          setRecentLogs(sortedGuestRecent.slice(0, 10));
+
+          const guestWL = JSON.parse(localStorage.getItem("filmtracker_guest_watchlist") || "[]");
+          const titles = guestWL
+            .map((item: any) => item.title || item.movie?.title)
+            .filter(Boolean);
+          setWatchlistTitles(titles);
+
           const count = guestLogs.length;
-          const minutes = guestLogs.reduce((acc, curr) => acc + (curr.movie?.runtime || 105), 0);
+          const minutes = guestLogs.reduce(
+            (acc, curr) => acc + (curr.movie?.runtime && curr.movie.runtime > 0 ? curr.movie.runtime : 105),
+            0
+          );
+          const streak = calculateActiveStreak(guestLogs);
+
           setUserStats({
             watchedCount: count,
             totalMinutes: minutes,
-            streak: count > 0 ? 1 : 0,
+            streak: streak,
           });
         }
 
@@ -168,6 +203,18 @@ export default function DashboardPage() {
     }
 
     loadDashboardData();
+
+    const handleRefresh = () => {
+      loadDashboardData();
+    };
+
+    window.addEventListener("focus", handleRefresh);
+    window.addEventListener("filmtracker_log_updated", handleRefresh);
+
+    return () => {
+      window.removeEventListener("focus", handleRefresh);
+      window.removeEventListener("filmtracker_log_updated", handleRefresh);
+    };
   }, [user, isGuest, lastUpdated]);
 
   const displayedCinemaMovies = (
@@ -342,7 +389,7 @@ export default function DashboardPage() {
 
       {/* Monthly Challenges Section */}
       <section>
-        <MonthlyChallengesCard logs={recentLogs} />
+        <MonthlyChallengesCard logs={allLogs.length > 0 ? allLogs : recentLogs} />
       </section>
 
       {/* CineQuiz Banner */}
@@ -533,7 +580,7 @@ export default function DashboardPage() {
                       {log.movie?.title || "Película"}
                     </h3>
                     <div className="flex items-center gap-2 text-xs text-zinc-400 mt-0.5">
-                      <span>{formatDate(log.watched_at)}</span>
+                      <span>{log.watched_at ? formatDate(log.watched_at) : "Vista hace tiempo"}</span>
                       {log.platform && <span>• {log.platform}</span>}
                     </div>
                   </div>
@@ -565,7 +612,7 @@ export default function DashboardPage() {
       {/* AI Recommendations */}
       {!isGuest && user && (
         <AIRecommendations
-          logs={recentLogs}
+          logs={allLogs.length > 0 ? allLogs : recentLogs}
           watchlistTitles={watchlistTitles}
         />
       )}

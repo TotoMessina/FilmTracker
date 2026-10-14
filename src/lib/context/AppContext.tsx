@@ -159,6 +159,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const onLogSaved = () => {
     setLastUpdated(Date.now());
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("filmtracker_log_updated"));
+    }
   };
 
   const openCinemaTicket = (log: Log) => {

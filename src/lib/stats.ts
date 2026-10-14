@@ -62,3 +62,34 @@ export function calculateStats(logs: Log[], year: string, today = new Date()) {
     months, weekdays, histogram, directors, actors, countries, decades, topMovies,
   };
 }
+
+export function calculateActiveStreak(logs: Log[], today = new Date()): number {
+  const dates = logs.map(watchedDate).filter((date): date is string => date !== null);
+  if (dates.length === 0) return 0;
+
+  const days = [...new Set(dates)].sort().reverse();
+  const todayStr = today.toISOString().slice(0, 10);
+  const yesterday = new Date(today.getTime() - 86400000);
+  const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+  const latestDay = days[0];
+  // Active streak is only alive if latest watch was today or yesterday
+  if (latestDay !== todayStr && latestDay !== yesterdayStr) {
+    return 0;
+  }
+
+  let streak = 0;
+  let checkTime = Date.parse(`${latestDay}T00:00:00Z`);
+
+  for (const day of days) {
+    const dayTime = Date.parse(`${day}T00:00:00Z`);
+    if (checkTime - dayTime === 0) {
+      streak++;
+      checkTime -= 86400000;
+    } else {
+      break;
+    }
+  }
+
+  return streak;
+}
