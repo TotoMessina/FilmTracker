@@ -43,6 +43,7 @@ import { TriggerWarningsSection } from "@/components/movies/TriggerWarningsSecti
 import { MoviePitchModal } from "@/components/movies/MoviePitchModal";
 import { RecapExpress } from "@/components/movies/RecapExpress";
 import { MovieQuickLogInline } from "@/components/movies/MovieQuickLogInline";
+import { getExistingUserLog } from "@/lib/services/quickLog";
 
 export default function MovieDetailPage() {
   const params = useParams();
@@ -58,6 +59,7 @@ export default function MovieDetailPage() {
   const [inWatchlist, setInWatchlist] = useState(false);
   const [cinemaStatus, setCinemaStatus] = useState<CinemaStatus | null>(null);
   const [userWatchedIds, setUserWatchedIds] = useState<Set<number>>(new Set());
+  const [userMovieLog, setUserMovieLog] = useState<Log | null>(null);
   const [isPitchModalOpen, setIsPitchModalOpen] = useState(false);
   const [isQuickLogInlineOpen, setIsQuickLogInlineOpen] = useState(false);
 
@@ -115,12 +117,24 @@ export default function MovieDetailPage() {
       setUserWatchedIds(new Set(guestLogs.map((l: any) => l.tmdb_id)));
     }
 
+    // Load this user's specific log for this movie
+    const loadUserMovieLog = () => {
+      getExistingUserLog(tmdbId, user?.id, Boolean(isGuest || !user)).then((log) => {
+        setUserMovieLog(log);
+        if (log) {
+          setUserWatchedIds((prev) => new Set(prev).add(tmdbId));
+        }
+      });
+    };
+    loadUserMovieLog();
+
     const handleLogUpdated = () => {
       if (user) {
         fetchAllUserLogs(user.id, { select: "tmdb_id" }).then((logs) => {
           if (logs) setUserWatchedIds(new Set(logs.map((d) => d.tmdb_id)));
         });
       }
+      loadUserMovieLog();
     };
     window.addEventListener("filmtracker_log_updated", handleLogUpdated);
     return () => {
@@ -324,15 +338,23 @@ export default function MovieDetailPage() {
                 title="Carga Rápida en 1 clic (Opción 5)"
               >
                 <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
-                <span>Carga Rápida ⚡</span>
+                <span>{userMovieLog ? "Editar Rápido ⚡" : "Carga Rápida ⚡"}</span>
               </button>
 
               <button
-                onClick={() => openLogModal(movie)}
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-xs sm:text-sm shadow-xl shadow-red-600/30 active:scale-95 transition"
+                onClick={() => openLogModal(movie, userMovieLog || undefined)}
+                className={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-2xl font-bold text-xs sm:text-sm shadow-xl active:scale-95 transition ${
+                  userMovieLog
+                    ? "bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white shadow-orange-600/30"
+                    : "bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-red-600/30"
+                }`}
               >
-                <Plus className="w-4 h-4" />
-                <span>Registrar / Puntuar</span>
+                {userMovieLog ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                <span>
+                  {userMovieLog
+                    ? `Editar mi Registro (${userMovieLog.rating !== null ? `${userMovieLog.rating}★` : "Sin nota"})`
+                    : "Registrar / Puntuar"}
+                </span>
               </button>
 
               <button
@@ -364,10 +386,12 @@ export default function MovieDetailPage() {
               <div className="pt-2 animate-in fade-in slide-in-from-top-2 duration-200">
                 <MovieQuickLogInline
                   movie={movie}
-                  userWatched={userWatchedIds.has(tmdbId)}
+                  userWatched={Boolean(userMovieLog) || userWatchedIds.has(tmdbId)}
+                  existingLog={userMovieLog}
                   onClose={() => setIsQuickLogInlineOpen(false)}
                   onLogged={() => {
                     setUserWatchedIds((prev) => new Set(prev).add(tmdbId));
+                    getExistingUserLog(tmdbId, user?.id, Boolean(isGuest || !user)).then(setUserMovieLog);
                   }}
                 />
               </div>

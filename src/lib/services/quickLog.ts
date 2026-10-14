@@ -26,6 +26,7 @@ export interface QuickLogOptions {
   watchedAt?: string | null; // "YYYY-MM-DD" or null for "Sin fecha"
   platform?: string | null;
   isRewatch?: boolean;
+  existingLogId?: string | null;
   user?: any;
   isGuest?: boolean;
   triggerConfetti?: () => void;
@@ -35,6 +36,7 @@ export interface QuickLogOptions {
 export interface QuickLogResult {
   success: boolean;
   log?: Log;
+  isUpdate?: boolean;
   error?: string;
 }
 
@@ -76,8 +78,50 @@ export function setLastUsedPlatform(platform: string): void {
 }
 
 /**
+ * Finds if the user already has a log recorded for this movie.
+ */
+export async function getExistingUserLog(
+  tmdbId: number,
+  userId?: string | null,
+  isGuest?: boolean
+): Promise<Log | null> {
+  if (!tmdbId) return null;
+
+  // Guest Mode
+  if (isGuest || !userId) {
+    if (typeof window === "undefined") return null;
+    try {
+      const guestLogs = JSON.parse(localStorage.getItem("filmtracker_guest_logs") || "[]");
+      const found = guestLogs.find((l: any) => l.tmdb_id === tmdbId);
+      return found || null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Authenticated Mode
+  try {
+    const { data } = await supabase
+      .from("logs")
+      .select("*, movie:movies(*)")
+      .eq("user_id", userId)
+      .eq("tmdb_id", tmdbId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    return (data as Log) || null;
+  } catch (err) {
+    console.warn("Error fetching existing user log:", err);
+    return null;
+  }
+}
+
+/**
  * Executes a fast, streamlined movie log without requiring the user
  * to open the heavy multi-field modal.
+ * If the movie was already logged by this user, it UPDATES the existing log
+ * instead of creating a duplicate.
  */
 export async function performQuickLog(options: QuickLogOptions): Promise<QuickLogResult> {
   const {
@@ -86,6 +130,7 @@ export async function performQuickLog(options: QuickLogOptions): Promise<QuickLo
     watchedAt = new Date().toISOString().split("T")[0],
     platform = getLastUsedPlatform(),
     isRewatch = false,
+    existingLogId,
     user,
     isGuest,
     triggerConfetti,
@@ -109,7 +154,7 @@ export async function performQuickLog(options: QuickLogOptions): Promise<QuickLo
   try {
     // 1. Guest Mode
     if (isGuest || !user) {
-      const guestLogs = JSON.parse(
+      const guestLogs: any[] = JSON.parse(
         typeof window !== "undefined"
           ? localStorage.getItem("filmtracker_guest_logs") || "[]"
           : "[]"
@@ -131,20 +176,27 @@ export async function performQuickLog(options: QuickLogOptions): Promise<QuickLo
         ];
       }
 
-      const newLog: Log = {
-        id: `guest-log-${Date.now()}`,
+      // Check if this movie was already logged
+      const existingIndex = guestLogs.findIndex(
+        (l: any) => (existingLogId && l.id === existingLogId) || l.tmdb_id === tmdbId
+      );
+      const isExisting = existingIndex !== -1;
+      const existingItem = isExisting ? guestLogs[existingIndex] : null;
+
+      const logToSave: Log = {
+        id: isExisting ? existingItem.id : `guest-log-${Date.now()}`,
         user_id: "guest-user-123",
         tmdb_id: tmdbId,
         watched_at: finalWatchedAt,
         rating: finalRating,
-        review: null,
-        notes: null,
-        platform: platform || "Netflix",
-        format: "Normal",
+        review: existingItem?.review || null,
+        notes: existingItem?.notes || null,
+        platform: platform || existingItem?.platform || "Netflix",
+        format: existingItem?.format || "Normal",
         is_rewatch: isRewatch,
-        contains_spoilers: false,
-        custom_poster_path: null,
-        created_at: new Date().toISOString(),
+        contains_spoilers: existingItem?.contains_spoilers || false,
+        custom_poster_path: existingItem?.custom_poster_path || null,
+        created_at: existingItem?.created_at || new Date().toISOString(),
         movie: {
           tmdb_id: tmdbId,
           title,
@@ -161,13 +213,22 @@ export async function performQuickLog(options: QuickLogOptions): Promise<QuickLo
         },
       };
 
-      const updatedLogs = [newLog, ...guestLogs];
+      let updatedLogs: any[];
+      if (isExisting) {
+        // Update in-place to avoid duplicates
+        updatedLogs = guestLogs.map((l: any, idx: number) =>
+          idx === existingIndex ? logToSave : l
+        );
+      } else {
+        updatedLogs = [logToSave, ...guestLogs];
+      }
+
       if (typeof window !== "undefined") {
         localStorage.setItem("filmtracker_guest_logs", JSON.stringify(updatedLogs));
       }
 
       // Challenges & Badges evaluation
-      checkAndUpdateMonthlyChallenges("guest", newLog).then(({ newlyCompleted, allCompleted }) => {
+      checkAndUpdateMonthlyChallenges("guest", logToSave).then(({ newlyCompleted, allCompleted }) => {
         if ((newlyCompleted.length > 0 || allCompleted) && triggerConfetti) {
           triggerConfetti();
         }
@@ -186,7 +247,7 @@ export async function performQuickLog(options: QuickLogOptions): Promise<QuickLo
       }
 
       if (onLogSaved) onLogSaved();
-      return { success: true, log: newLog };
+      return { success: true, log: logToSave, isUpdate: isExisting };
     }
 
     // 2. Authenticated User Mode
@@ -247,40 +308,81 @@ export async function performQuickLog(options: QuickLogOptions): Promise<QuickLo
       console.warn("QuickLog movie cache warning:", movieError);
     }
 
-    // Step B: Insert into logs
-    const { data: newLogData, error: insertError } = await supabase
-      .from("logs")
-      .insert({
-        user_id: activeUserId,
-        tmdb_id: tmdbId,
-        watched_at: finalWatchedAt,
-        rating: finalRating,
-        review: null,
-        notes: null,
-        platform: platform || "Netflix",
-        format: "Normal",
-        is_rewatch: isRewatch,
-        contains_spoilers: false,
-        custom_poster_path: null,
-      })
-      .select("id")
-      .single();
+    // Step B: Check for existing log for (activeUserId, tmdbId) or by existingLogId
+    let targetLogId: string | null = existingLogId || null;
+    let existingLogData: any = null;
 
-    if (insertError) throw insertError;
+    const { data: existingLogs } = await supabase
+      .from("logs")
+      .select("id, rating, review, notes, platform, format, is_rewatch, contains_spoilers, custom_poster_path, watched_at, created_at")
+      .eq("user_id", activeUserId)
+      .eq("tmdb_id", tmdbId)
+      .order("created_at", { ascending: false });
+
+    if (existingLogs && existingLogs.length > 0) {
+      existingLogData = existingLogs[0];
+      targetLogId = existingLogs[0].id;
+
+      // Clean up any extraneous duplicate rows created earlier
+      if (existingLogs.length > 1) {
+        const extraIds = existingLogs.slice(1).map((l: any) => l.id);
+        await supabase.from("logs").delete().in("id", extraIds);
+      }
+    }
+
+    const isUpdate = Boolean(targetLogId);
+    let savedLogId = targetLogId;
+
+    if (isUpdate && targetLogId) {
+      // UPDATE existing log record
+      const { error: updateError } = await supabase
+        .from("logs")
+        .update({
+          watched_at: finalWatchedAt,
+          rating: finalRating,
+          platform: platform || existingLogData?.platform || "Netflix",
+          is_rewatch: isRewatch,
+        })
+        .eq("id", targetLogId);
+
+      if (updateError) throw updateError;
+    } else {
+      // INSERT new log record
+      const { data: newLogData, error: insertError } = await supabase
+        .from("logs")
+        .insert({
+          user_id: activeUserId,
+          tmdb_id: tmdbId,
+          watched_at: finalWatchedAt,
+          rating: finalRating,
+          review: null,
+          notes: null,
+          platform: platform || "Netflix",
+          format: "Normal",
+          is_rewatch: isRewatch,
+          contains_spoilers: false,
+          custom_poster_path: null,
+        })
+        .select("id")
+        .single();
+
+      if (insertError) throw insertError;
+      savedLogId = newLogData.id;
+    }
 
     const savedLogObj: Log = {
-      id: newLogData.id,
+      id: savedLogId || `log-${Date.now()}`,
       user_id: activeUserId,
       tmdb_id: tmdbId,
       watched_at: finalWatchedAt,
       rating: finalRating,
-      review: null,
-      notes: null,
-      platform: platform || "Netflix",
-      format: "Normal",
+      review: existingLogData?.review || null,
+      notes: existingLogData?.notes || null,
+      platform: platform || existingLogData?.platform || "Netflix",
+      format: existingLogData?.format || "Normal",
       is_rewatch: isRewatch,
-      contains_spoilers: false,
-      custom_poster_path: null,
+      contains_spoilers: existingLogData?.contains_spoilers || false,
+      custom_poster_path: existingLogData?.custom_poster_path || null,
       movie: {
         tmdb_id: tmdbId,
         title,
@@ -330,7 +432,7 @@ export async function performQuickLog(options: QuickLogOptions): Promise<QuickLo
       onLogSaved();
     }
 
-    return { success: true, log: savedLogObj };
+    return { success: true, log: savedLogObj, isUpdate };
   } catch (err: any) {
     console.error("Error in performQuickLog:", err);
     return { success: false, error: err?.message || "Ocurrió un error al registrar la película." };

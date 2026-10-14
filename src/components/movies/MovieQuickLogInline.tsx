@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Zap, 
   Star, 
@@ -10,13 +10,16 @@ import {
   RotateCcw, 
   Loader2, 
   X, 
-  ExternalLink 
+  ExternalLink,
+  Edit3
 } from "lucide-react";
 import { TMDBMovie } from "@/lib/tmdb/client";
+import { Log } from "@/lib/supabase/types";
 import { useApp } from "@/lib/context/AppContext";
 import { useAuth } from "@/lib/context/AuthContext";
 import { 
   performQuickLog, 
+  getExistingUserLog,
   POPULAR_PLATFORMS, 
   getLastUsedPlatform, 
   setLastUsedPlatform 
@@ -25,6 +28,7 @@ import {
 interface MovieQuickLogInlineProps {
   movie: TMDBMovie;
   userWatched?: boolean;
+  existingLog?: Log | null;
   onClose?: () => void;
   onLogged?: () => void;
 }
@@ -32,22 +36,77 @@ interface MovieQuickLogInlineProps {
 export function MovieQuickLogInline({
   movie,
   userWatched = false,
+  existingLog = null,
   onClose,
   onLogged,
 }: MovieQuickLogInlineProps) {
   const { openLogModal, triggerConfetti, onLogSaved } = useApp();
   const { user, isGuest } = useAuth();
 
-  const [rating, setRating] = useState<number>(7.0);
+  const [currentLog, setCurrentLog] = useState<Log | null>(existingLog);
+  const [rating, setRating] = useState<number>(existingLog?.rating ?? 7.0);
   const [hoverRating, setHoverRating] = useState<number | null>(null);
   const [dateOption, setDateOption] = useState<"today" | "yesterday" | "none" | "custom">("today");
-  const [customDate, setCustomDate] = useState<string>(new Date().toISOString().split("T")[0]);
-  const [platform, setPlatform] = useState<string>(getLastUsedPlatform());
-  const [isRewatch, setIsRewatch] = useState<boolean>(userWatched);
+  const [customDate, setCustomDate] = useState<string>(
+    existingLog?.watched_at || new Date().toISOString().split("T")[0]
+  );
+  const [platform, setPlatform] = useState<string>(
+    existingLog?.platform || getLastUsedPlatform()
+  );
+  const [isRewatch, setIsRewatch] = useState<boolean>(
+    existingLog?.is_rewatch || userWatched
+  );
 
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Sync / fetch existing log on mount or when props update
+  useEffect(() => {
+    if (existingLog) {
+      setCurrentLog(existingLog);
+      applyLogToForm(existingLog);
+      return;
+    }
+
+    // Auto-fetch if not passed
+    getExistingUserLog(movie.id, user?.id, Boolean(isGuest || !user)).then((found) => {
+      if (found) {
+        setCurrentLog(found);
+        applyLogToForm(found);
+      }
+    });
+  }, [movie.id, existingLog, user, isGuest]);
+
+  const applyLogToForm = (logItem: Log) => {
+    if (typeof logItem.rating === "number") {
+      setRating(logItem.rating);
+    }
+    if (logItem.platform) {
+      setPlatform(logItem.platform);
+    }
+    if (typeof logItem.is_rewatch === "boolean") {
+      setIsRewatch(logItem.is_rewatch);
+    }
+
+    if (!logItem.watched_at) {
+      setDateOption("none");
+    } else {
+      const todayStr = new Date().toISOString().split("T")[0];
+      const yesterdayDate = new Date();
+      yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+      const yesterdayStr = yesterdayDate.toISOString().split("T")[0];
+
+      if (logItem.watched_at === todayStr) {
+        setDateOption("today");
+      } else if (logItem.watched_at === yesterdayStr) {
+        setDateOption("yesterday");
+      } else {
+        setDateOption("custom");
+        setCustomDate(logItem.watched_at);
+      }
+    }
+  };
 
   const getComputedWatchedAt = (): string | null => {
     if (dateOption === "none") return null;
@@ -74,6 +133,7 @@ export function MovieQuickLogInline({
         watchedAt,
         platform,
         isRewatch,
+        existingLogId: currentLog?.id || null,
         user,
         isGuest: Boolean(isGuest || !user),
         triggerConfetti,
@@ -82,6 +142,10 @@ export function MovieQuickLogInline({
 
       if (!result.success) {
         throw new Error(result.error || "No se pudo registrar la película.");
+      }
+
+      if (result.log) {
+        setCurrentLog(result.log);
       }
 
       setSavedSuccess(true);
@@ -121,7 +185,7 @@ export function MovieQuickLogInline({
             </div>
             <div>
               <h4 className="font-bold text-sm text-emerald-300">
-                ¡Registrada con éxito en tu Diario!
+                {currentLog ? "¡Registro actualizado con éxito!" : "¡Registrada con éxito en tu Diario!"}
               </h4>
               <p className="text-xs text-zinc-300">
                 {movie.title} • {rating}★ • {platform} •{" "}
@@ -130,14 +194,22 @@ export function MovieQuickLogInline({
             </div>
           </div>
 
-          {onClose && (
+          <div className="flex items-center gap-2">
             <button
-              onClick={onClose}
-              className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+              onClick={() => setSavedSuccess(false)}
+              className="text-xs text-emerald-400 hover:text-emerald-300 underline font-semibold cursor-pointer"
             >
-              <X className="w-4 h-4" />
+              Seguir editando
             </button>
-          )}
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -149,19 +221,25 @@ export function MovieQuickLogInline({
       <div className="flex items-center justify-between pb-2 border-b border-white/10">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-amber-500 to-rose-600 flex items-center justify-center text-white shadow-md">
-            <Zap className="w-4 h-4 fill-white" />
+            {currentLog ? <Edit3 className="w-4 h-4" /> : <Zap className="w-4 h-4 fill-white" />}
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h4 className="font-extrabold text-sm text-white">
-                Carga Rápida en 1 Clic
+                {currentLog ? "Editando tu Registro" : "Carga Rápida en 1 Clic"}
               </h4>
-              <span className="px-2 py-0.2 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-extrabold uppercase">
-                ⚡ Instantáneo
+              <span className={`px-2 py-0.2 rounded-full border text-[9px] font-extrabold uppercase ${
+                currentLog 
+                  ? "bg-blue-500/20 text-blue-300 border-blue-500/30" 
+                  : "bg-amber-500/20 text-amber-300 border-amber-500/30"
+              }`}>
+                {currentLog ? "✏️ Modo Edición" : "⚡ Instantáneo"}
               </span>
             </div>
             <p className="text-[11px] text-zinc-400">
-              Puntuá y guardá directamente sin abrir formularios pesados
+              {currentLog 
+                ? "Esta película ya está registrada. Modificá tu calificación, fecha o plataforma sin duplicarla."
+                : "Puntuá y guardá directamente sin abrir formularios pesados"}
             </p>
           </div>
         </div>
@@ -177,10 +255,16 @@ export function MovieQuickLogInline({
         )}
       </div>
 
-      {userWatched && (
-        <div className="p-2.5 rounded-xl bg-blue-950/40 border border-blue-500/30 text-xs text-blue-200 flex items-center gap-2">
-          <span className="text-blue-400 font-bold">✓ Ya la viste:</span>
-          <span>Podés registrar un rewatch o actualizar tu calificación.</span>
+      {currentLog && (
+        <div className="p-2.5 rounded-xl bg-blue-950/40 border border-blue-500/30 text-xs text-blue-200 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5">
+            <span className="text-blue-400 font-bold">✓ Registro actual:</span>
+            <span>
+              {currentLog.rating ? `${currentLog.rating}★` : "Sin puntuación"} • {currentLog.platform || "Sin plataforma"} •{" "}
+              {currentLog.watched_at || "Sin fecha"}
+            </span>
+          </div>
+          <span className="text-[10px] text-blue-400/80 font-mono">No creará duplicados</span>
         </div>
       )}
 
@@ -394,12 +478,21 @@ export function MovieQuickLogInline({
           {saving ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Guardando en tu diario...</span>
+              <span>{currentLog ? "Actualizando registro..." : "Guardando en tu diario..."}</span>
             </>
           ) : (
             <>
-              <Zap className="w-4 h-4 fill-white" />
-              <span>Guardar en mi Diario (1 Clic) ⚡</span>
+              {currentLog ? (
+                <>
+                  <Check className="w-4 h-4" />
+                  <span>Guardar Cambios (Actualizar Registro) ⚡</span>
+                </>
+              ) : (
+                <>
+                  <Zap className="w-4 h-4 fill-white" />
+                  <span>Guardar en mi Diario (1 Clic) ⚡</span>
+                </>
+              )}
             </>
           )}
         </button>
@@ -409,11 +502,15 @@ export function MovieQuickLogInline({
             type="button"
             onClick={() => {
               if (onClose) onClose();
-              openLogModal(movie);
+              openLogModal(movie, currentLog || undefined);
             }}
             className="text-[11px] text-zinc-400 hover:text-zinc-200 transition inline-flex items-center gap-1 underline underline-offset-2 cursor-pointer"
           >
-            <span>¿Querés escribir reseña o agregar acompañantes? Abrir editor completo</span>
+            <span>
+              {currentLog
+                ? "¿Querés editar reseña completa, notas privadas o acompañantes? Abrir editor completo"
+                : "¿Querés escribir reseña o agregar acompañantes? Abrir editor completo"}
+            </span>
             <ExternalLink className="w-3 h-3" />
           </button>
         </div>

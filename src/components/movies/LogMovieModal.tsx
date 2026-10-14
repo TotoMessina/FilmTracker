@@ -34,6 +34,7 @@ import { checkNewBadges, persistAndNotifyUnlockedBadges } from "@/lib/gamificati
 import { checkAndUpdateMonthlyChallenges } from "@/lib/services/challenges";
 import { Profile, Log } from "@/lib/supabase/types";
 import { fetchAllUserLogs } from "@/lib/services/logs";
+import { getExistingUserLog } from "@/lib/services/quickLog";
 
 const PLATFORMS = [
   "Netflix",
@@ -78,6 +79,9 @@ export function LogMovieModal() {
   const [followers, setFollowers] = useState<Profile[]>([]);
   const [selectedCompanionIds, setSelectedCompanionIds] = useState<string[]>([]);
 
+  // Auto-detected existing log (to prevent duplicate registrations)
+  const [detectedExistingLog, setDetectedExistingLog] = useState<Log | null>(null);
+
   // AI Review Assistant
   const [generatingReview, setGeneratingReview] = useState(false);
   const [aiReviewToast, setAiReviewToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -89,19 +93,24 @@ export function LogMovieModal() {
     setErrorMsg(null);
     const tmdbId = activeLogMovie.id;
 
+    const applyLogData = (logItem: Log) => {
+      const hasDate = Boolean(logItem.watched_at);
+      setNoExactDate(!hasDate);
+      setWatchedAt(logItem.watched_at || new Date().toISOString().split("T")[0]);
+      setRating(logItem.rating ?? 7.0);
+      setIsRewatch(logItem.is_rewatch || false);
+      setContainsSpoilers(Boolean(logItem.contains_spoilers));
+      setPlatform(logItem.platform || "Netflix");
+      setFormat(logItem.format || "Normal");
+      setReview(logItem.review || "");
+      setNotes(logItem.notes || "");
+      setCustomPosterPath(logItem.custom_poster_path || null);
+    };
+
     // Prefill if editing
     if (editingLog) {
-      const hasDate = Boolean(editingLog.watched_at);
-      setNoExactDate(!hasDate);
-      setWatchedAt(editingLog.watched_at || new Date().toISOString().split("T")[0]);
-      setRating(editingLog.rating ?? 7.0);
-      setIsRewatch(editingLog.is_rewatch || false);
-      setContainsSpoilers(Boolean(editingLog.contains_spoilers));
-      setPlatform(editingLog.platform || "Netflix");
-      setFormat(editingLog.format || "Normal");
-      setReview(editingLog.review || "");
-      setNotes(editingLog.notes || "");
-      setCustomPosterPath(editingLog.custom_poster_path || null);
+      applyLogData(editingLog);
+      setDetectedExistingLog(null);
     } else {
       // Default new log
       setNoExactDate(false);
@@ -115,6 +124,15 @@ export function LogMovieModal() {
       setNotes("");
       setCustomPosterPath(null);
       setSelectedCompanionIds([]);
+      setDetectedExistingLog(null);
+
+      // Automatically check if user already logged this movie to prevent duplicates
+      getExistingUserLog(tmdbId, user?.id, Boolean(isGuest || !user)).then((foundLog) => {
+        if (foundLog) {
+          applyLogData(foundLog);
+          setDetectedExistingLog(foundLog);
+        }
+      });
     }
 
     // Fetch full TMDB movie details
@@ -253,8 +271,9 @@ export function LogMovieModal() {
           ];
         }
 
+        const activeEditLog = editingLog || detectedExistingLog;
         const newLog = {
-          id: editingLog ? editingLog.id : `guest-log-${Date.now()}`,
+          id: activeEditLog ? activeEditLog.id : `guest-log-${Date.now()}`,
           user_id: "guest-user-123",
           tmdb_id: tmdbId,
           watched_at: finalWatchedAt,
@@ -266,7 +285,7 @@ export function LogMovieModal() {
           is_rewatch: isRewatch,
           contains_spoilers: containsSpoilers,
           custom_poster_path: customPosterPath,
-          created_at: new Date().toISOString(),
+          created_at: activeEditLog?.created_at || new Date().toISOString(),
           movie: {
             tmdb_id: tmdbId,
             title,
@@ -284,8 +303,11 @@ export function LogMovieModal() {
         };
 
         let updatedLogs;
-        if (editingLog) {
-          updatedLogs = guestLogs.map((l: any) => (l.id === editingLog.id ? newLog : l));
+        const existingIdx = guestLogs.findIndex(
+          (l: any) => (activeEditLog && l.id === activeEditLog.id) || l.tmdb_id === tmdbId
+        );
+        if (existingIdx !== -1) {
+          updatedLogs = guestLogs.map((l: any, idx: number) => (idx === existingIdx ? newLog : l));
         } else {
           updatedLogs = [newLog, ...guestLogs];
         }
@@ -367,8 +389,24 @@ export function LogMovieModal() {
       }
 
       // Step B: Insert or Update Log
-      let logId = editingLog?.id;
-      if (editingLog) {
+      const activeEditLog = editingLog || detectedExistingLog;
+      let logId = activeEditLog?.id;
+
+      if (!logId) {
+        // Fallback check to guarantee no duplicate creation
+        const { data: existingRows } = await supabase
+          .from("logs")
+          .select("id")
+          .eq("user_id", activeUserId)
+          .eq("tmdb_id", tmdbId)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        if (existingRows && existingRows.length > 0) {
+          logId = existingRows[0].id;
+        }
+      }
+
+      if (logId) {
         const { error: updateError } = await supabase
           .from("logs")
           .update({
@@ -382,7 +420,7 @@ export function LogMovieModal() {
             contains_spoilers: containsSpoilers,
             custom_poster_path: customPosterPath,
           })
-          .eq("id", editingLog.id);
+          .eq("id", logId);
 
         if (updateError) throw updateError;
       } else {
@@ -501,7 +539,7 @@ export function LogMovieModal() {
           <div className="flex items-center gap-2">
             <Film className="w-5 h-5 text-red-500" />
             <h2 className="text-base sm:text-lg font-bold text-white">
-              {editingLog ? "Editar registro" : "Registrar película en el diario"}
+              {editingLog || detectedExistingLog ? "Editar registro de película" : "Registrar película en el diario"}
             </h2>
           </div>
           <button
@@ -514,6 +552,16 @@ export function LogMovieModal() {
 
         {/* Content Form */}
         <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 sm:space-y-6">
+          {detectedExistingLog && !editingLog && (
+            <div className="flex items-center justify-between p-3 rounded-2xl bg-blue-950/40 border border-blue-500/30 text-xs text-blue-200">
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-blue-300">✓ Película ya registrada:</span>
+                <span>Se cargaron tus datos actuales para actualizar tu registro sin duplicarlo.</span>
+              </div>
+              <span className="text-[10px] text-blue-400 font-mono">Modo Edición</span>
+            </div>
+          )}
+
           {errorMsg && (
             <div className="flex items-center gap-2 p-3 rounded-xl bg-red-950/50 border border-red-800 text-red-300 text-xs">
               <AlertCircle className="w-4 h-4 shrink-0" />
@@ -832,7 +880,11 @@ export function LogMovieModal() {
               disabled={saving}
               className="flex items-center justify-center gap-2 px-6 py-2.5 sm:py-2 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 shadow-lg shadow-red-600/30 active:scale-95 disabled:opacity-50 transition text-center"
             >
-              {saving ? "Guardando..." : editingLog ? "Actualizar Registro" : "Guardar en el Diario"}
+              {saving
+                ? "Guardando..."
+                : (editingLog || detectedExistingLog)
+                ? "Actualizar Registro"
+                : "Guardar en el Diario"}
             </button>
           </div>
         </form>

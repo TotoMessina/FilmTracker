@@ -10,9 +10,16 @@ import { getImageUrl } from "@/lib/tmdb/client";
 interface AIRecommendationsProps {
   logs: Log[];
   watchlistTitles: string[];
+  watchlistIds?: number[];
+  isLoadingLogs?: boolean;
 }
 
-export function AIRecommendations({ logs, watchlistTitles }: AIRecommendationsProps) {
+export function AIRecommendations({
+  logs,
+  watchlistTitles,
+  watchlistIds,
+  isLoadingLogs,
+}: AIRecommendationsProps) {
   const [recommendations, setRecommendations] = useState<AIRecommendation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,16 +31,40 @@ export function AIRecommendations({ logs, watchlistTitles }: AIRecommendationsPr
     setError(null);
 
     try {
+      const watchedTmdbIds = Array.from(
+        new Set(
+          logs
+            .map((l) => l.tmdb_id || l.movie?.tmdb_id)
+            .filter((id): id is number => typeof id === "number" && id > 0)
+        )
+      );
+
+      const watchedTitles = Array.from(
+        new Set(
+          logs
+            .map((l) => l.movie?.title)
+            .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+        )
+      );
+
       const payload = {
         logs: logs.map((l) => ({
-          title: l.movie?.title,
+          tmdb_id: l.tmdb_id || l.movie?.tmdb_id,
+          title: l.movie?.title || "Película",
           genres: l.movie?.genres?.map((g) => (typeof g === "string" ? g : g.name)) || [],
           rating: l.rating,
           is_rewatch: l.is_rewatch,
           platform: l.platform,
-          cast_data: l.movie?.cast_data || [],
+          cast_data: (l.movie?.cast_data || [])
+            .slice(0, 3)
+            .map((a: any) => (typeof a === "string" ? a : a?.name))
+            .filter(Boolean),
+          watched_at: l.watched_at,
         })),
+        watchedTmdbIds,
+        watchedTitles,
         watchlistTitles: watchlistTitles || [],
+        watchlistTmdbIds: watchlistIds || [],
       };
 
       const res = await fetch("/api/ai/recommend", {
@@ -60,8 +91,10 @@ export function AIRecommendations({ logs, watchlistTitles }: AIRecommendationsPr
   };
 
   useEffect(() => {
-    fetchRecommendations();
-  }, [logs.length]);
+    if (!isLoadingLogs && logs && logs.length >= 5) {
+      fetchRecommendations();
+    }
+  }, [logs.length, isLoadingLogs]);
 
   const getConfidenceBadgeColor = (confidence: number) => {
     if (confidence >= 90) {
@@ -109,7 +142,7 @@ export function AIRecommendations({ logs, watchlistTitles }: AIRecommendationsPr
       </div>
 
       {/* Condition 1: Less than 5 logs banner */}
-      {(!logs || logs.length < 5) && (
+      {!isLoadingLogs && (!logs || logs.length < 5) && (
         <div className="p-6 rounded-3xl bg-gradient-to-r from-red-950/20 via-[#141420] to-[#141420] border border-red-500/20 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
           <div className="flex items-center gap-4 text-center sm:text-left">
             <div className="w-12 h-12 rounded-2xl bg-red-600/10 border border-red-500/20 flex items-center justify-center text-red-500 shrink-0">
@@ -139,7 +172,7 @@ export function AIRecommendations({ logs, watchlistTitles }: AIRecommendationsPr
       )}
 
       {/* Condition 2: Error message with retry */}
-      {logs && logs.length >= 5 && error && !loading && (
+      {!isLoadingLogs && logs && logs.length >= 5 && error && !loading && (
         <div className="p-5 rounded-2xl bg-red-950/20 border border-red-500/20 flex items-center justify-between gap-3 text-red-400 text-sm">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-5 h-5 shrink-0" />
@@ -155,7 +188,7 @@ export function AIRecommendations({ logs, watchlistTitles }: AIRecommendationsPr
       )}
 
       {/* Condition 3: Loading Skeleton UI (5 cards) */}
-      {loading && (
+      {(isLoadingLogs || loading) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {[1, 2, 3, 4, 5].map((item) => (
             <div
@@ -183,7 +216,7 @@ export function AIRecommendations({ logs, watchlistTitles }: AIRecommendationsPr
       )}
 
       {/* Condition 4: Result UI (5 cards) with Posters */}
-      {logs && logs.length >= 5 && !loading && !error && recommendations.length > 0 && (
+      {!isLoadingLogs && logs && logs.length >= 5 && !loading && !error && recommendations.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {recommendations.map((rec, index) => {
             const badgeClasses = getConfidenceBadgeColor(rec.confidence);

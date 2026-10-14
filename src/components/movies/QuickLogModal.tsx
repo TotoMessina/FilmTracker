@@ -26,10 +26,12 @@ import {
 } from "@/lib/tmdb/client";
 import { 
   performQuickLog, 
+  getExistingUserLog,
   POPULAR_PLATFORMS, 
   getLastUsedPlatform, 
   setLastUsedPlatform 
 } from "@/lib/services/quickLog";
+import { Log } from "@/lib/supabase/types";
 import { supabase } from "@/lib/supabase/client";
 
 export function QuickLogModal() {
@@ -53,6 +55,7 @@ export function QuickLogModal() {
 
   // Selected movie for quick logging
   const [selectedMovie, setSelectedMovie] = useState<any | null>(null);
+  const [existingLog, setExistingLog] = useState<Log | null>(null);
 
   // Form state
   const [rating, setRating] = useState<number>(7.0);
@@ -84,6 +87,7 @@ export function QuickLogModal() {
       setPlatform(getLastUsedPlatform());
       setIsRewatch(false);
       setSavedSuccess(false);
+      setExistingLog(null);
       setErrorMsg(null);
       setSearchQuery("");
       setSearchResults([]);
@@ -97,6 +101,41 @@ export function QuickLogModal() {
       }
     }
   }, [isQuickLogOpen, quickLogMovie]);
+
+  // When selectedMovie changes, detect if user already logged it
+  useEffect(() => {
+    if (!selectedMovie) {
+      setExistingLog(null);
+      return;
+    }
+
+    getExistingUserLog(selectedMovie.id, user?.id, Boolean(isGuest || !user)).then((found) => {
+      if (found) {
+        setExistingLog(found);
+        if (typeof found.rating === "number") setRating(found.rating);
+        if (found.platform) setPlatform(found.platform);
+        if (typeof found.is_rewatch === "boolean") setIsRewatch(found.is_rewatch);
+        if (!found.watched_at) {
+          setDateOption("none");
+        } else {
+          const todayStr = new Date().toISOString().split("T")[0];
+          const yesterdayDate = new Date();
+          yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+          const yesterdayStr = yesterdayDate.toISOString().split("T")[0];
+          if (found.watched_at === todayStr) {
+            setDateOption("today");
+          } else if (found.watched_at === yesterdayStr) {
+            setDateOption("yesterday");
+          } else {
+            setDateOption("custom");
+            setCustomDate(found.watched_at);
+          }
+        }
+      } else {
+        setExistingLog(null);
+      }
+    });
+  }, [selectedMovie, user, isGuest]);
 
   const loadQuickSuggestions = async () => {
     if (user && !isGuest) {
@@ -183,6 +222,7 @@ export function QuickLogModal() {
         watchedAt,
         platform,
         isRewatch,
+        existingLogId: existingLog?.id || null,
         user,
         isGuest: Boolean(isGuest || !user),
         triggerConfetti,
@@ -191,6 +231,10 @@ export function QuickLogModal() {
 
       if (!result.success) {
         throw new Error(result.error || "No se pudo registrar la película.");
+      }
+
+      if (result.log) {
+        setExistingLog(result.log);
       }
 
       setSavedSuccess(true);
@@ -207,6 +251,7 @@ export function QuickLogModal() {
 
   const handleLogAnother = () => {
     setSelectedMovie(null);
+    setExistingLog(null);
     setSavedSuccess(false);
     setSearchQuery("");
     setSearchResults([]);
@@ -218,8 +263,9 @@ export function QuickLogModal() {
   const handleOpenFullEditor = () => {
     if (!selectedMovie) return;
     const movieToLog = selectedMovie;
+    const currentEditLog = existingLog;
     closeQuickLogModal();
-    openLogModal(movieToLog);
+    openLogModal(movieToLog, currentEditLog || undefined);
   };
 
   const getRatingLabel = (val: number): { text: string; color: string } => {
@@ -273,14 +319,24 @@ export function QuickLogModal() {
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="font-black text-sm text-white tracking-tight">
-                      {savedSuccess ? "¡Película Registrada!" : "Registro Rápido"}
+                      {savedSuccess 
+                        ? (existingLog ? "¡Registro Actualizado!" : "¡Película Registrada!")
+                        : (existingLog ? "Editando tu Registro" : "Registro Rápido")}
                     </h3>
-                    <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-extrabold uppercase">
-                      5 seg ⚡
+                    <span className={`px-2 py-0.5 rounded-full border text-[9px] font-extrabold uppercase ${
+                      existingLog 
+                        ? "bg-blue-500/20 text-blue-300 border-blue-500/30"
+                        : "bg-amber-500/20 text-amber-300 border-amber-500/30"
+                    }`}>
+                      {existingLog ? "✏️ Modo Edición" : "5 seg ⚡"}
                     </span>
                   </div>
                   <p className="text-[11px] text-zinc-400">
-                    {savedSuccess ? "Guardada en tu diario cinematográfico" : "Sin rodeos: elegí la peli, puntuala y listo"}
+                    {savedSuccess 
+                      ? "Guardado en tu diario cinematográfico" 
+                      : existingLog
+                      ? "Esta película ya está registrada. Modificá tu nota o fecha sin duplicarla."
+                      : "Sin rodeos: elegí la peli, puntuala y listo"}
                   </p>
                 </div>
               </div>
@@ -378,6 +434,20 @@ export function QuickLogModal() {
                       <span>Cambiar</span>
                     </button>
                   </div>
+
+                  {/* Existing log notice */}
+                  {existingLog && (
+                    <div className="p-2.5 rounded-xl bg-blue-950/40 border border-blue-500/30 text-xs text-blue-200 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-blue-400 font-bold">✓ Registro previo:</span>
+                        <span>
+                          {existingLog.rating ? `${existingLog.rating}★` : "Sin nota"} • {existingLog.platform || "Sin plataforma"} •{" "}
+                          {existingLog.watched_at || "Sin fecha"}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-blue-400/80 font-mono">No se duplicará</span>
+                    </div>
+                  )}
 
                   {/* Rating Selector */}
                   <div className="space-y-2 p-3.5 rounded-2xl bg-[#131322] border border-white/5">
@@ -587,12 +657,21 @@ export function QuickLogModal() {
                       {saving ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Guardando al instante...</span>
+                          <span>{existingLog ? "Actualizando registro..." : "Guardando al instante..."}</span>
                         </>
                       ) : (
                         <>
-                          <Zap className="w-4 h-4 fill-white text-white" />
-                          <span>Guardar en mi Diario (1 clic)</span>
+                          {existingLog ? (
+                            <>
+                              <Check className="w-4 h-4" />
+                              <span>Guardar Cambios (Actualizar Registro) ⚡</span>
+                            </>
+                          ) : (
+                            <>
+                              <Zap className="w-4 h-4 fill-white text-white" />
+                              <span>Guardar en mi Diario (1 clic) ⚡</span>
+                            </>
+                          )}
                         </>
                       )}
                     </button>
@@ -603,7 +682,11 @@ export function QuickLogModal() {
                         onClick={handleOpenFullEditor}
                         className="text-[11px] text-zinc-400 hover:text-zinc-200 transition inline-flex items-center gap-1 underline underline-offset-2 cursor-pointer"
                       >
-                        <span>¿Querés escribir reseña o agregar acompañantes? Abrir editor completo</span>
+                        <span>
+                          {existingLog
+                            ? "¿Querés editar reseña completa o notas privadas? Abrir editor completo"
+                            : "¿Querés escribir reseña o agregar acompañantes? Abrir editor completo"}
+                        </span>
                         <ExternalLink className="w-3 h-3" />
                       </button>
                     </div>

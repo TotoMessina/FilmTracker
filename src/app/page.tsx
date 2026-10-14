@@ -52,6 +52,7 @@ export default function DashboardPage() {
   const [allLogs, setAllLogs] = useState<Log[]>([]);
   const [recentLogs, setRecentLogs] = useState<Log[]>([]);
   const [watchlistTitles, setWatchlistTitles] = useState<string[]>([]);
+  const [watchlistIds, setWatchlistIds] = useState<number[]>([]);
   const [userStats, setUserStats] = useState({
     watchedCount: 0,
     totalMinutes: 0,
@@ -122,7 +123,7 @@ export default function DashboardPage() {
           });
 
           const wlData = await fetchAllUserWatchlist(user.id, {
-            select: "title, movie:movies(title)",
+            select: "tmdb_id, title, movie:movies(tmdb_id, title)",
           });
 
           if (wlData) {
@@ -130,6 +131,11 @@ export default function DashboardPage() {
               .map((item: any) => item.title || item.movie?.title)
               .filter(Boolean);
             setWatchlistTitles(titles);
+
+            const ids = wlData
+              .map((item: any) => item.tmdb_id || item.movie?.tmdb_id)
+              .filter((id: any): id is number => typeof id === "number" && id > 0);
+            setWatchlistIds(ids);
           }
         } else if (isGuest) {
           // Guest mode from localStorage
@@ -148,6 +154,11 @@ export default function DashboardPage() {
             .map((item: any) => item.title || item.movie?.title)
             .filter(Boolean);
           setWatchlistTitles(titles);
+
+          const ids = guestWL
+            .map((item: any) => item.tmdb_id || item.movie?.tmdb_id || item.id)
+            .filter((id: any): id is number => typeof id === "number" && id > 0);
+          setWatchlistIds(ids);
 
           const count = guestLogs.length;
           const minutes = guestLogs.reduce(
@@ -600,8 +611,10 @@ export default function DashboardPage() {
       {/* AI Recommendations */}
       {!isGuest && user && (
         <AIRecommendations
-          logs={allLogs.length > 0 ? allLogs : recentLogs}
+          logs={allLogs}
           watchlistTitles={watchlistTitles}
+          watchlistIds={watchlistIds}
+          isLoadingLogs={loading}
         />
       )}
     </div>
