@@ -28,6 +28,7 @@ import { useAuth } from "@/lib/context/AuthContext";
 import { useApp } from "@/lib/context/AppContext";
 import { supabase } from "@/lib/supabase/client";
 import { Log } from "@/lib/supabase/types";
+import { fetchAllUserLogs } from "@/lib/services/logs";
 import { getImageUrl } from "@/lib/tmdb/client";
 import { formatDate, formatRuntime, getRatingColor, getPlatformBadge } from "@/lib/utils/formatting";
 
@@ -65,15 +66,8 @@ export default function DiaryPage() {
       setLoading(true);
       try {
         if (user) {
-          const { data, error } = await supabase
-            .from("logs")
-            .select("*, movie:movies(*)")
-            .eq("user_id", user.id)
-            .order("watched_at", { ascending: false, nullsFirst: false });
-
-          if (!error && data) {
-            setLogs(data as Log[]);
-          }
+          const data = await fetchAllUserLogs(user.id, { orderByWatched: true });
+          setLogs(data);
         } else if (isGuest) {
           const guestLogs = JSON.parse(localStorage.getItem("filmtracker_guest_logs") || "[]");
           setLogs(guestLogs);
@@ -86,6 +80,14 @@ export default function DiaryPage() {
     }
 
     fetchDiary();
+
+    const handleLogUpdated = () => {
+      fetchDiary();
+    };
+    window.addEventListener("filmtracker_log_updated", handleLogUpdated);
+    return () => {
+      window.removeEventListener("filmtracker_log_updated", handleLogUpdated);
+    };
   }, [user, isGuest, lastUpdated]);
 
   const handleDelete = async (logId: string) => {

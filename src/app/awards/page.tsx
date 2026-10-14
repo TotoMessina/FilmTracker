@@ -29,6 +29,7 @@ import {
 import { useAuth } from "@/lib/context/AuthContext";
 import { useApp } from "@/lib/context/AppContext";
 import { supabase } from "@/lib/supabase/client";
+import { fetchAllUserLogs, fetchAllUserWatchlist } from "@/lib/services/logs";
 import { getMovieDetails, getImageUrl, TMDBMovie } from "@/lib/tmdb/client";
 import AICoach from "@/components/awards/AICoach";
 import { AwardsPrediction } from "@/lib/supabase/types";
@@ -285,9 +286,9 @@ export default function AwardsPage() {
       setLoading(true);
       try {
         if (user) {
-          const [{ data: logsData }, { data: wlData }] = await Promise.all([
-            supabase.from("logs").select("tmdb_id").eq("user_id", user.id),
-            supabase.from("watchlist").select("title, movie:movies(title)").eq("user_id", user.id),
+          const [logsData, wlData] = await Promise.all([
+            fetchAllUserLogs(user.id, { select: "tmdb_id" }),
+            fetchAllUserWatchlist(user.id, { select: "title, movie:movies(title)" }),
           ]);
 
           if (logsData) {
@@ -312,6 +313,14 @@ export default function AwardsPage() {
     }
 
     loadWatchedIds();
+
+    const handleLogUpdated = () => {
+      loadWatchedIds();
+    };
+    window.addEventListener("filmtracker_log_updated", handleLogUpdated);
+    return () => {
+      window.removeEventListener("filmtracker_log_updated", handleLogUpdated);
+    };
   }, [user, isGuest]);
 
   // 2. Fetch live TMDB details (posters, ratings) dynamically

@@ -6,6 +6,7 @@ import { Globe2, Film, MapPin, Compass } from "lucide-react";
 import { useAuth } from "@/lib/context/AuthContext";
 import { supabase } from "@/lib/supabase/client";
 import { Log } from "@/lib/supabase/types";
+import { fetchAllUserLogs } from "@/lib/services/logs";
 
 interface CountryStat {
   code: string;
@@ -36,11 +37,7 @@ export default function CineTravelerMapPage() {
         let logs: Log[] = [];
 
         if (user) {
-          const { data } = await supabase
-            .from("logs")
-            .select("*, movie:movies(*)")
-            .eq("user_id", user.id);
-          if (data) logs = data as Log[];
+          logs = await fetchAllUserLogs(user.id);
         } else if (isGuest) {
           logs = JSON.parse(localStorage.getItem("filmtracker_guest_logs") || "[]");
         }
@@ -83,6 +80,14 @@ export default function CineTravelerMapPage() {
     }
 
     loadCountryStats();
+
+    const handleLogUpdated = () => {
+      loadCountryStats();
+    };
+    window.addEventListener("filmtracker_log_updated", handleLogUpdated);
+    return () => {
+      window.removeEventListener("filmtracker_log_updated", handleLogUpdated);
+    };
   }, [user, isGuest]);
 
   return (

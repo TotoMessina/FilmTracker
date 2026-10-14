@@ -6,6 +6,7 @@ import { Users2, Film, Star, Sparkles, User, Clapperboard, Popcorn } from "lucid
 import { useAuth } from "@/lib/context/AuthContext";
 import { supabase } from "@/lib/supabase/client";
 import { Log } from "@/lib/supabase/types";
+import { fetchAllUserLogs } from "@/lib/services/logs";
 import { getImageUrl } from "@/lib/tmdb/client";
 import WatchTogetherView from "@/components/connections/WatchTogetherView";
 
@@ -44,11 +45,7 @@ export default function ConnectionsPage() {
         let logs: Log[] = [];
 
         if (user) {
-          const { data } = await supabase
-            .from("logs")
-            .select("*, movie:movies(*)")
-            .eq("user_id", user.id);
-          if (data) logs = data as Log[];
+          logs = await fetchAllUserLogs(user.id);
         } else if (isGuest) {
           logs = JSON.parse(localStorage.getItem("filmtracker_guest_logs") || "[]");
         }
@@ -95,6 +92,14 @@ export default function ConnectionsPage() {
     }
 
     loadConnections();
+
+    const handleLogUpdated = () => {
+      loadConnections();
+    };
+    window.addEventListener("filmtracker_log_updated", handleLogUpdated);
+    return () => {
+      window.removeEventListener("filmtracker_log_updated", handleLogUpdated);
+    };
   }, [user, isGuest]);
 
   return (

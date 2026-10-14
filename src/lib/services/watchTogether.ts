@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase/client";
 import { Profile, Log, WatchlistItem } from "@/lib/supabase/types";
 import { POPULAR_STREAMING_PLATFORMS, StreamingPlatformInfo } from "./streamingPlatforms";
+import { fetchAllUserLogs, fetchAllUserWatchlist } from "./logs";
 
 export interface ConnectedFriend {
   id: string;
@@ -170,15 +171,13 @@ export async function fetchParticipantData(
     }
   } else {
     try {
-      const [{ data: logsData }, { data: wlData }] = await Promise.all([
-        supabase
-          .from("logs")
-          .select("tmdb_id, rating, movie:movies(title, genres)")
-          .eq("user_id", user.id),
-        supabase
-          .from("watchlist")
-          .select("tmdb_id, title, movie:movies(title)")
-          .eq("user_id", user.id),
+      const [logsData, wlData] = await Promise.all([
+        fetchAllUserLogs(user.id, {
+          select: "tmdb_id, rating, movie:movies(title, genres)",
+        }),
+        fetchAllUserWatchlist(user.id, {
+          select: "tmdb_id, title, movie:movies(title)",
+        }),
       ]);
 
       if (logsData) {

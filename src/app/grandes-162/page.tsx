@@ -38,6 +38,7 @@ import {
 import { useAuth } from "@/lib/context/AuthContext";
 import { useApp } from "@/lib/context/AppContext";
 import { supabase } from "@/lib/supabase/client";
+import { fetchAllUserLogs, fetchAllUserWatchlist } from "@/lib/services/logs";
 
 function formatRuntime(mins?: number): string | null {
   if (!mins || mins <= 0) return null;
@@ -90,16 +91,16 @@ export default function Grandes163Page() {
 
       setLoadingUserLogs(true);
       try {
-        const [logsRes, watchlistRes] = await Promise.all([
-          supabase.from("logs").select("tmdb_id, rating").eq("user_id", user.id),
-          supabase.from("watchlist").select("tmdb_id").eq("user_id", user.id),
+        const [logsData, watchlistData] = await Promise.all([
+          fetchAllUserLogs(user.id, { select: "tmdb_id, rating" }),
+          fetchAllUserWatchlist(user.id, { select: "tmdb_id" }),
         ]);
 
         if (!isCancelled) {
-          if (logsRes.data) {
+          if (logsData) {
             const watched = new Set<number>();
             const ratings = new Map<number, number>();
-            logsRes.data.forEach((l) => {
+            logsData.forEach((l) => {
               if (l.tmdb_id) {
                 watched.add(l.tmdb_id);
                 if (l.rating) ratings.set(l.tmdb_id, l.rating);
@@ -109,9 +110,9 @@ export default function Grandes163Page() {
             setUserRatings(ratings);
           }
 
-          if (watchlistRes.data) {
+          if (watchlistData) {
             const wl = new Set<number>();
-            watchlistRes.data.forEach((w) => {
+            watchlistData.forEach((w) => {
               if (w.tmdb_id) wl.add(w.tmdb_id);
             });
             setWatchlistIds(wl);

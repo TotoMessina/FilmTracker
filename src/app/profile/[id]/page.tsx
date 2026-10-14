@@ -29,6 +29,7 @@ import ProfileReviews from "@/components/profile/ProfileReviews";
 import ProfileStats from "@/components/profile/ProfileStats";
 import ProfileCollections from "@/components/profile/ProfileCollections";
 import { getUserCollections } from "@/lib/services/collections";
+import { fetchAllUserLogs, fetchAllUserWatchlist } from "@/lib/services/logs";
 import { StreamingPlatformsSelector } from "@/components/profile/StreamingPlatformsSelector";
 import TasteBiasAnalyzer from "@/components/profile/TasteBiasAnalyzer";
 import DirectorsCut from "@/components/profile/DirectorsCut";
@@ -85,26 +86,13 @@ export default function UserProfilePage() {
           setProfile(profData as Profile);
         }
 
-        // 2. Fetch user's logs
-        const { data: logsData } = await supabase
-          .from("logs")
-          .select("*, movie:movies(*)")
-          .eq("user_id", targetId)
-          .order("watched_at", { ascending: false });
+        // 2. Fetch user's logs (chunked to ensure 100% exact stats regardless of diary size)
+        const logsData = await fetchAllUserLogs(targetId, { orderByWatched: true });
+        setLogs(logsData);
 
-        if (logsData) {
-          setLogs(logsData as Log[]);
-        }
-
-        // 3. Fetch user's watchlist
-        const { data: wlData } = await supabase
-          .from("watchlist")
-          .select("*, movie:movies(*)")
-          .eq("user_id", targetId);
-
-        if (wlData) {
-          setWatchlist(wlData as WatchlistItem[]);
-        }
+        // 3. Fetch user's watchlist (chunked)
+        const wlData = await fetchAllUserWatchlist(targetId);
+        setWatchlist(wlData);
 
         // 4. Fetch user's collections
         const colsData = await getUserCollections(targetId);
@@ -162,6 +150,14 @@ export default function UserProfilePage() {
     }
 
     loadUserProfile();
+
+    const handleLogUpdated = () => {
+      loadUserProfile();
+    };
+    window.addEventListener("filmtracker_log_updated", handleLogUpdated);
+    return () => {
+      window.removeEventListener("filmtracker_log_updated", handleLogUpdated);
+    };
   }, [targetId, user, isMe]);
 
   const handleToggleFollow = async () => {

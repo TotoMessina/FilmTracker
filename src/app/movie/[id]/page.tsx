@@ -35,6 +35,7 @@ import { useApp } from "@/lib/context/AppContext";
 import { useAuth } from "@/lib/context/AuthContext";
 import { supabase } from "@/lib/supabase/client";
 import { Log } from "@/lib/supabase/types";
+import { fetchAllUserLogs } from "@/lib/services/logs";
 import { formatRuntime, formatDate, getRatingColor } from "@/lib/utils/formatting";
 import { MovieCard } from "@/components/movies/MovieCard";
 import { ReviewCard } from "@/components/social/ReviewCard";
@@ -104,17 +105,25 @@ export default function MovieDetailPage() {
         });
 
       // Load all movies user has watched
-      supabase
-        .from("logs")
-        .select("tmdb_id")
-        .eq("user_id", user.id)
-        .then(({ data }) => {
-          if (data) setUserWatchedIds(new Set(data.map((d) => d.tmdb_id)));
-        });
+      fetchAllUserLogs(user.id, { select: "tmdb_id" }).then((logs) => {
+        if (logs) setUserWatchedIds(new Set(logs.map((d) => d.tmdb_id)));
+      });
     } else if (isGuest) {
       const guestLogs = JSON.parse(localStorage.getItem("filmtracker_guest_logs") || "[]");
       setUserWatchedIds(new Set(guestLogs.map((l: any) => l.tmdb_id)));
     }
+
+    const handleLogUpdated = () => {
+      if (user) {
+        fetchAllUserLogs(user.id, { select: "tmdb_id" }).then((logs) => {
+          if (logs) setUserWatchedIds(new Set(logs.map((d) => d.tmdb_id)));
+        });
+      }
+    };
+    window.addEventListener("filmtracker_log_updated", handleLogUpdated);
+    return () => {
+      window.removeEventListener("filmtracker_log_updated", handleLogUpdated);
+    };
   }, [tmdbId, user, isGuest]);
 
   const handleToggleWatchlist = async () => {

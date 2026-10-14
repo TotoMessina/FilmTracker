@@ -31,6 +31,7 @@ import {
   SagaCategory, 
   getCachedSagaDetails 
 } from "@/lib/services/sagas";
+import { fetchAllUserLogs } from "@/lib/services/logs";
 import { 
   TMDBCollectionItem, 
   TMDBCollectionDetails, 
@@ -89,12 +90,9 @@ export default function SagasPage() {
       }
 
       try {
-        const { data: logs, error } = await supabase
-          .from("logs")
-          .select("tmdb_id, rating")
-          .eq("user_id", user.id);
+        const logs = await fetchAllUserLogs(user.id, { select: "tmdb_id, rating" });
 
-        if (!error && logs && !isCancelled) {
+        if (logs && !isCancelled) {
           const ids = new Set<number>();
           const ratings = new Map<number, number>();
 

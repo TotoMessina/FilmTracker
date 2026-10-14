@@ -26,6 +26,7 @@ import { useApp } from "@/lib/context/AppContext";
 import { supabase } from "@/lib/supabase/client";
 import { Log } from "@/lib/supabase/types";
 import { TriviaQuestion } from "@/lib/groq/types";
+import { fetchAllUserLogs } from "@/lib/services/logs";
 
 // Sound synthesizer using Web Audio API
 function playQuizSound(type: "correct" | "wrong" | "tick") {
@@ -124,11 +125,7 @@ export default function TriviaPage() {
       try {
         let loadedLogs: Log[] = [];
         if (user) {
-          const { data } = await supabase
-            .from("logs")
-            .select("*, movie:movies(*)")
-            .eq("user_id", user.id);
-          if (data) loadedLogs = data as Log[];
+          loadedLogs = await fetchAllUserLogs(user.id);
         } else if (isGuest) {
           loadedLogs = JSON.parse(localStorage.getItem("filmtracker_guest_logs") || "[]");
         }
@@ -159,6 +156,14 @@ export default function TriviaPage() {
     }
 
     loadLogs();
+
+    const handleLogUpdated = () => {
+      loadLogs();
+    };
+    window.addEventListener("filmtracker_log_updated", handleLogUpdated);
+    return () => {
+      window.removeEventListener("filmtracker_log_updated", handleLogUpdated);
+    };
   }, [user, isGuest]);
 
   // Timer effect during active question

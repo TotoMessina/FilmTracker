@@ -25,6 +25,7 @@ import { useAuth } from "@/lib/context/AuthContext";
 import { useApp } from "@/lib/context/AppContext";
 import { supabase } from "@/lib/supabase/client";
 import { WatchlistItem, Movie, Log } from "@/lib/supabase/types";
+import { fetchAllUserLogs, fetchAllUserWatchlist } from "@/lib/services/logs";
 import { AIWatchlistPriority } from "@/lib/groq/types";
 import { ExpiringMovieItem } from "@/app/api/streaming/expiring/route";
 import { getImageUrl } from "@/lib/tmdb/client";
@@ -92,23 +93,18 @@ export default function WatchlistPage() {
       setLoading(true);
       try {
         if (user) {
-          const [wlRes, logsRes] = await Promise.all([
-            supabase
-              .from("watchlist")
-              .select("*, movie:movies(*)")
-              .eq("user_id", user.id)
-              .order("added_at", { ascending: false }),
+          const [wlItems, logsRes] = await Promise.all([
+            fetchAllUserWatchlist(user.id),
             supabase
               .from("logs")
               .select("*, movie:movies(*)")
               .eq("user_id", user.id)
-              .order("watched_at", { ascending: false })
+              .order("watched_at", { ascending: false, nullsFirst: false })
+              .order("created_at", { ascending: false })
               .limit(5),
           ]);
 
-          if (!wlRes.error && wlRes.data) {
-            setItems(wlRes.data as WatchlistItem[]);
-          }
+          setItems(wlItems);
           if (!logsRes.error && logsRes.data) {
             setRecentLogs(logsRes.data as Log[]);
           }
@@ -134,6 +130,14 @@ export default function WatchlistPage() {
     }
 
     fetchWatchlist();
+
+    const handleLogUpdated = () => {
+      fetchWatchlist();
+    };
+    window.addEventListener("filmtracker_log_updated", handleLogUpdated);
+    return () => {
+      window.removeEventListener("filmtracker_log_updated", handleLogUpdated);
+    };
   }, [user, isGuest]);
 
   const handleRemove = async (tmdbId: number) => {
@@ -244,10 +248,7 @@ export default function WatchlistPage() {
     try {
       let allLogs: any[] = recentLogs;
       if (user) {
-        const { data: logsData } = await supabase
-          .from("logs")
-          .select("*, movie:movies(*)")
-          .eq("user_id", user.id);
+        const logsData = await fetchAllUserLogs(user.id);
         if (logsData && logsData.length > 0) {
           allLogs = logsData;
         }

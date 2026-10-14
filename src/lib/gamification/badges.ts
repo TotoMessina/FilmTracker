@@ -413,12 +413,10 @@ export const ALL_BADGES: BadgeDefinition[] = [
 
 export async function checkAndUnlockBadges(userId: string): Promise<BadgeDefinition[]> {
   try {
-    const { data: logsData, error: logsError } = await supabase
-      .from("logs")
-      .select("*, movie:movies(*)")
-      .eq("user_id", userId);
+    const { fetchAllUserLogs } = await import("@/lib/services/logs");
+    const logsData = await fetchAllUserLogs(userId);
 
-    if (logsError || !logsData) return [];
+    if (!logsData || logsData.length === 0) return [];
 
     const { data: userBadges, error: badgeError } = await supabase
       .from("user_badges")

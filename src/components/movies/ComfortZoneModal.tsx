@@ -300,7 +300,8 @@ export function ComfortZoneModal({
           .from("logs")
           .select("*, movie:movies(*)")
           .eq("user_id", user!.id)
-          .order("watched_at", { ascending: false })
+          .order("watched_at", { ascending: false, nullsFirst: false })
+          .order("created_at", { ascending: false })
           .limit(40);
 
         if (isCancelled || !logs || logs.length === 0) return;

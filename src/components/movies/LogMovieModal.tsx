@@ -33,6 +33,7 @@ import { checkAndUnlockBadges } from "@/lib/gamification/badges";
 import { checkNewBadges, persistAndNotifyUnlockedBadges } from "@/lib/gamification/badgeChecker";
 import { checkAndUpdateMonthlyChallenges } from "@/lib/services/challenges";
 import { Profile, Log } from "@/lib/supabase/types";
+import { fetchAllUserLogs } from "@/lib/services/logs";
 
 const PLATFORMS = [
   "Netflix",
@@ -423,7 +424,7 @@ export function LogMovieModal() {
         id: logId || `log-${Date.now()}`,
         user_id: activeUserId,
         tmdb_id: tmdbId,
-        watched_at: watchedAt ? new Date(watchedAt).toISOString() : new Date().toISOString(),
+        watched_at: finalWatchedAt,
         rating: rating > 0 ? rating : null,
         review: review.trim() || null,
         notes: notes.trim() || null,
@@ -455,12 +456,9 @@ export function LogMovieModal() {
         .eq("user_id", activeUserId)
         .then(({ data: userBadges }) => {
           const existing = new Set((userBadges || []).map((b: any) => b.badge_code));
-          supabase
-            .from("logs")
-            .select("*, movie:movies(*)")
-            .eq("user_id", activeUserId)
-            .then(({ data: allUserLogs }) => {
-              const fullLogs = (allUserLogs as Log[]) || [savedLogObj];
+          fetchAllUserLogs(activeUserId)
+            .then((allUserLogs) => {
+              const fullLogs = (allUserLogs && allUserLogs.length > 0) ? allUserLogs : [savedLogObj];
               const unlocked = checkNewBadges(fullLogs, existing);
               if (unlocked.length > 0) {
                 persistAndNotifyUnlockedBadges(unlocked, activeUserId);

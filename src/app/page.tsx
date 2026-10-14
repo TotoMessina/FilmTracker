@@ -38,6 +38,7 @@ import { supabase } from "@/lib/supabase/client";
 import { Log } from "@/lib/supabase/types";
 import { formatRuntime, formatDate, getRatingColor } from "@/lib/utils/formatting";
 import { calculateActiveStreak } from "@/lib/stats";
+import { fetchAllUserLogs, fetchAllUserWatchlist } from "@/lib/services/logs";
 
 export default function DashboardPage() {
   const { user, profile, isGuest } = useAuth();
@@ -95,20 +96,8 @@ export default function DashboardPage() {
 
         // 2. Fetch User Logs, Stats & Watchlist
         if (user) {
-          // Fetch all user logs (paginated if needed) to ensure 100% accurate total stats, time, streak and challenges
-          let userLogs: Log[] = [];
-          for (let offset = 0; ; offset += 500) {
-            const { data: chunk, error: chunkErr } = await supabase
-              .from("logs")
-              .select("*, movie:movies(*)")
-              .eq("user_id", user.id)
-              .range(offset, offset + 499)
-              .order("watched_at", { ascending: false, nullsFirst: false });
-            if (chunkErr) break;
-            if (chunk) userLogs.push(...(chunk as Log[]));
-            if (!chunk || chunk.length < 500) break;
-          }
-
+          // Fetch all user logs to ensure 100% accurate total stats, time, streak and challenges
+          const userLogs = await fetchAllUserLogs(user.id, { orderByWatched: true });
           setAllLogs(userLogs);
 
           // Top 10 most recent logs (ordered by watch date, fallback to creation date)
@@ -132,10 +121,9 @@ export default function DashboardPage() {
             streak: streak,
           });
 
-          const { data: wlData } = await supabase
-            .from("watchlist")
-            .select("title, movie:movies(title)")
-            .eq("user_id", user.id);
+          const wlData = await fetchAllUserWatchlist(user.id, {
+            select: "title, movie:movies(title)",
+          });
 
           if (wlData) {
             const titles = wlData

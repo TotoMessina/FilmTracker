@@ -16,6 +16,7 @@ import {
 import { useAuth } from "@/lib/context/AuthContext";
 import { supabase } from "@/lib/supabase/client";
 import { Profile, Log } from "@/lib/supabase/types";
+import { fetchAllUserLogs } from "@/lib/services/logs";
 import { getImageUrl } from "@/lib/tmdb/client";
 import { formatDate, getRatingColor } from "@/lib/utils/formatting";
 import { useApp } from "@/lib/context/AppContext";
@@ -73,11 +74,7 @@ export default function SocialPage() {
         // 3. Compute Soulmates with real shared movie data
         if (user) {
           // Get current user's watched tmdb_ids
-          const { data: myLogs } = await supabase
-            .from("logs")
-            .select("tmdb_id")
-            .eq("user_id", user.id);
-
+          const myLogs = await fetchAllUserLogs(user.id, { select: "tmdb_id" });
           const myMovieIds = new Set((myLogs || []).map((l: { tmdb_id: number }) => l.tmdb_id));
           setUserWatchedIds(myMovieIds);
 
@@ -92,11 +89,7 @@ export default function SocialPage() {
             // For each other user, count how many of their movies overlap with ours
             const soulmatesWithData = await Promise.all(
               others.map(async (p) => {
-                const { data: theirLogs } = await supabase
-                  .from("logs")
-                  .select("tmdb_id")
-                  .eq("user_id", p.id);
-
+                const theirLogs = await fetchAllUserLogs(p.id, { select: "tmdb_id" });
                 const theirIds = (theirLogs || []).map((l: { tmdb_id: number }) => l.tmdb_id);
                 const shared = theirIds.filter((id: number) => myMovieIds.has(id));
                 const sharedCount = shared.length;
@@ -149,6 +142,14 @@ export default function SocialPage() {
     }
 
     loadSocial();
+
+    const handleLogUpdated = () => {
+      loadSocial();
+    };
+    window.addEventListener("filmtracker_log_updated", handleLogUpdated);
+    return () => {
+      window.removeEventListener("filmtracker_log_updated", handleLogUpdated);
+    };
   }, [user, isGuest]);
 
   // Handle Search Users

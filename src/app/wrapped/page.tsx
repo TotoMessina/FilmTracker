@@ -31,6 +31,7 @@ import { useApp } from "@/lib/context/AppContext";
 import { supabase } from "@/lib/supabase/client";
 import { Log } from "@/lib/supabase/types";
 import { MonthlyWrappedResponse, MonthlyWrappedStats } from "@/lib/groq/types";
+import { fetchAllUserLogs } from "@/lib/services/logs";
 
 interface YearStats {
   totalWatched: number;
@@ -132,13 +133,7 @@ export default function CineWrappedPage() {
         let loaded: Log[] = [];
 
         if (user) {
-          const { data, error } = await supabase
-            .from("logs")
-            .select("*, movie:movies(*)")
-            .eq("user_id", user.id);
-
-          if (error) throw error;
-          loaded = (data as Log[]) || [];
+          loaded = await fetchAllUserLogs(user.id);
         } else if (isGuest) {
           const guestLogs = JSON.parse(localStorage.getItem("filmtracker_guest_logs") || "[]");
           loaded = guestLogs;
@@ -153,6 +148,14 @@ export default function CineWrappedPage() {
     }
 
     loadLogs();
+
+    const handleLogUpdated = () => {
+      loadLogs();
+    };
+    window.addEventListener("filmtracker_log_updated", handleLogUpdated);
+    return () => {
+      window.removeEventListener("filmtracker_log_updated", handleLogUpdated);
+    };
   }, [user, isGuest]);
 
   // Compute Annual Stats when allLogs or currentYear changes
