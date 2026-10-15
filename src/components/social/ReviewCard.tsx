@@ -1,5 +1,6 @@
 "use client";
 
+import { WatchedBadge } from '@/components/movies/WatchedBadge';
 import React, { useState } from "react";
 import Link from "next/link";
 import { Star, AlertTriangle, Eye, EyeOff, Calendar } from "lucide-react";
@@ -76,8 +77,9 @@ export function ReviewCard({
         <div className="flex gap-3 bg-white/5 p-3 rounded-2xl border border-white/5">
           <Link
             href={`/movie/${log.tmdb_id}`}
-            className="w-12 aspect-[2/3] rounded-lg overflow-hidden shrink-0 bg-zinc-800"
+            className="relative w-12 aspect-[2/3] rounded-lg overflow-hidden shrink-0 bg-zinc-800"
           >
+<WatchedBadge movieId={log.tmdb_id ?? 0} className="top-10 left-1" />
             <img
               src={getImageUrl(log.custom_poster_path || movie?.poster_path, "w185")}
               alt={movie?.title || "Película"}

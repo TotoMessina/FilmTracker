@@ -31,9 +31,9 @@ export async function POST(req: NextRequest) {
     const body = JSON.parse(raw);
     if (body.action === 'extract') {
       if (typeof body.text !== 'string' || !body.text.trim() || body.text.length > 40000 || ![5, 10, 100].includes(body.scale)) throw new Error('Texto o escala inválidos.');
-      const result = await ask(`Extraé todos los registros de películas del texto, sin inventar ni completar datos faltantes. Máximo 100 registros; si hay más devolvé {"overflow":true}. Devolvé {"rows":[{"title":"nombre exacto del archivo","year":null,"rating":null,"watched_at":null,"review":"","notes":""}]}. Conservá literalmente título, reseña y notas. Año es año de estreno. Rating es el número original sin conversión (escala indicada por el usuario). Fecha de visionado en AAAA-MM-DD solo si está explícita; no confundas año de estreno con fecha de visionado. Campos ausentes null o texto vacío. No descartes películas sin puntaje.`, { text: body.text, scale: body.scale });
-      if (result.overflow || !Array.isArray(result.rows) || result.rows.length > 100) throw new Error('El máximo es 100 películas por archivo.');
-      if (!result.rows.length) throw new Error('No se encontraron películas en el archivo.');
+      const result = await ask(`Extraé todos los registros de películas del texto o notas suministradas, sin inventar ni completar datos faltantes. Máximo 100 registros; si hay más devolvé {"overflow":true}. Devolvé {"rows":[{"title":"nombre de la película","year":null,"rating":null,"watched_at":null,"review":"","notes":""}]}. Conservá literalmente título, reseña y notas. Año es año de estreno (número entero). Rating es el número original sin conversión (escala indicada por el usuario). Fecha de visionado en AAAA-MM-DD solo si está explícita; no confundas año de estreno con fecha de visionado. Campos ausentes null o texto vacío. No descartes películas sin puntaje.`, { text: body.text, scale: body.scale });
+      if (result.overflow || !Array.isArray(result.rows) || result.rows.length > 100) throw new Error('El máximo es 100 películas por importación.');
+      if (!result.rows.length) throw new Error('No se encontraron películas en el texto o archivo.');
       return NextResponse.json({ rows: result.rows.map((row: unknown) => validateMovie(row, body.scale)) });
     }
     if (body.action !== 'match' || !Array.isArray(body.rows) || !body.rows.length || body.rows.length > 5) throw new Error('Enviá entre 1 y 5 películas por lote.');
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
       const queries = [...new Set([row.title, alternate])];
       const responses = await Promise.all(queries.map(query => searchMovies(query)));
       const unique = new Map<number, Candidate>();
-      responses.forEach(response => response.results.slice(0, 8).forEach(movie => unique.set(movie.id, { id: movie.id, title: movie.title, original_title: movie.original_title, release_date: movie.release_date })));
+      responses.forEach(response => response.results.slice(0, 8).forEach(movie => unique.set(movie.id, { id: movie.id, title: movie.title, original_title: movie.original_title, release_date: movie.release_date, poster_path: movie.poster_path, vote_average: movie.vote_average })));
       return [...unique.values()];
     }));
     const matched = await ask('Asociá cada registro con los candidatos TMDB suministrados. Elegí únicamente un ID de su lista; nunca inventes IDs. Respetá el año cuando existe. Títulos ambiguos, remakes sin año o candidatos insuficientes: id null y confidence baja. Alta solo si la identidad es inequívoca, incluso con traducción regional o error tipográfico. Devolvé {"matches":[{"id":null,"confidence":"alta|media|baja","reason":"explicación breve en español"}]} en el mismo orden.', rows.map((row, index) => ({ title: row.title, year: row.year, candidates: candidates[index] })));

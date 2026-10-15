@@ -6,8 +6,10 @@ import { Log } from "../supabase/types";
 import { TMDBMovie } from "../tmdb/client";
 import { supabase } from "../supabase/client";
 import { useAuth } from "./AuthContext";
+import { loadWatchedMovieIds } from '../services/watchedMovies';
 
 interface AppContextType {
+  isWatched: (tmdbId: number) => boolean;
   // Auth Prompt
   isAuthPromptOpen: boolean;
   authPromptReason: string;
@@ -74,6 +76,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Unread messages
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [lastUpdated, setLastUpdated] = useState(Date.now());
+  const [watched, setWatched] = useState<{ userId: string; ids: Set<number> } | null>(null);
+  const userId = user?.id;
+  useEffect(() => {
+    if (!userId) return;
+    let controller: AbortController | undefined;
+    let disposed = false;
+    const refresh = async () => {
+      controller?.abort();
+      const current = new AbortController();
+      controller = current;
+      try {
+        const ids = await loadWatchedMovieIds(userId, current.signal);
+        if (!disposed && !current.signal.aborted) setWatched({ userId, ids });
+      } catch { /* Keep the last successful result during a temporary connection failure. */ }
+    };
+    void refresh();
+    // One shared index for all posters, including imports and deletions in other tabs.
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = () => { clearTimeout(timer); timer = setTimeout(() => { void refresh(); }, 250); };
+    const channel = supabase.channel(`watched-movies-${userId}`).on('postgres_changes', { event: '*', schema: 'public', table: 'logs', filter: `user_id=eq.${userId}` }, schedule).subscribe();
+    window.addEventListener('focus', schedule);
+    return () => { disposed = true; controller?.abort(); clearTimeout(timer); window.removeEventListener('focus', schedule); void supabase.removeChannel(channel); };
+  }, [userId, lastUpdated]);
+  const isWatched = (tmdbId: number) => Boolean(userId && watched?.userId === userId && watched.ids.has(tmdbId));
   const [importNotice, setImportNotice] = useState<AppContextType['importNotice']>(null);
 
   const openAuthPrompt = (reason?: string) => {
@@ -263,6 +289,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider
       value={{
+        isWatched,
         isAuthPromptOpen,
         authPromptReason,
         openAuthPrompt,

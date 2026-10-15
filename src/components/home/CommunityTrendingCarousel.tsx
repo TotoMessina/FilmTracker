@@ -1,5 +1,6 @@
 "use client";
 
+import { WatchedBadge } from '@/components/movies/WatchedBadge';
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { 
@@ -141,6 +142,7 @@ export function CommunityTrendingCarousel() {
                 href={`/movie/${movie.tmdb_id}`}
                 className="relative aspect-[2/3] w-full overflow-hidden bg-zinc-900 block"
               >
+<WatchedBadge movieId={movie.tmdb_id ?? 0} className="top-10 left-1" />
                 {movie.poster_path ? (
                   <img
                     src={getImageUrl(movie.poster_path, "w500")}

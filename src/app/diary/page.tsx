@@ -1,5 +1,6 @@
 "use client";
 
+import { WatchedBadge } from '@/components/movies/WatchedBadge';
 import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { 
@@ -676,8 +677,9 @@ export default function DiaryPage() {
                       <div className="flex items-center gap-4 min-w-0 flex-1">
                         <Link
                           href={`/movie/${log.tmdb_id}`}
-                          className="w-14 sm:w-16 aspect-[2/3] rounded-xl overflow-hidden bg-zinc-800 shrink-0 border border-white/10 hover:border-white/30 transition shadow-md"
+                          className="relative w-14 sm:w-16 aspect-[2/3] rounded-xl overflow-hidden bg-zinc-800 shrink-0 border border-white/10 hover:border-white/30 transition shadow-md"
                         >
+<WatchedBadge movieId={log.tmdb_id ?? 0} className="top-10 left-1" />
                           <img
                             src={getImageUrl(poster, "w200")}
                             alt={movie?.title || "Póster"}
@@ -807,6 +809,7 @@ export default function DiaryPage() {
                   >
                     {/* Poster container */}
                     <div className="relative aspect-[2/3] w-full overflow-hidden bg-zinc-900 block">
+<WatchedBadge movieId={log.tmdb_id ?? 0} className="top-10 left-1" />
                       <img
                         src={getImageUrl(poster, "w500")}
                         alt={movie?.title || "Póster"}

@@ -16,6 +16,8 @@ export interface Candidate {
   title: string;
   original_title?: string;
   release_date?: string;
+  poster_path?: string | null;
+  vote_average?: number;
 }
 
 export interface MatchedMovie {

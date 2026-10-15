@@ -1,5 +1,6 @@
 "use client";
 
+import { WatchedBadge } from '@/components/movies/WatchedBadge';
 import React, { useEffect, useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
@@ -427,7 +428,8 @@ export default function UserProfilePage() {
                   href={`/movie/${log.tmdb_id}`}
                   className="group relative flex flex-col rounded-2xl overflow-hidden bg-[#141420] border border-white/5 hover:border-white/20 transition shadow-lg"
                 >
-                  <div className="aspect-[2/3] w-full overflow-hidden bg-zinc-900">
+                  <div className="relative aspect-[2/3] w-full overflow-hidden bg-zinc-900">
+<WatchedBadge movieId={log.tmdb_id ?? 0} className="top-10 left-1" />
                     <img
                       src={getImageUrl(log.custom_poster_path || log.movie?.poster_path, "w500")}
                       alt={log.movie?.title || "Película"}
@@ -481,7 +483,8 @@ export default function UserProfilePage() {
                   href={`/movie/${item.tmdb_id}`}
                   className="group relative flex flex-col rounded-2xl overflow-hidden bg-[#141420] border border-white/5 hover:border-white/20 transition shadow-lg"
                 >
-                  <div className="aspect-[2/3] w-full overflow-hidden bg-zinc-900">
+                  <div className="relative aspect-[2/3] w-full overflow-hidden bg-zinc-900">
+<WatchedBadge movieId={item.tmdb_id ?? 0} className="top-10 left-1" />
                     <img
                       src={getImageUrl(item.movie?.poster_path, "w500")}
                       alt={item.title || "Película"}

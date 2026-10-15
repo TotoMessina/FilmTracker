@@ -1,5 +1,6 @@
 "use client";
 
+import { WatchedBadge } from '@/components/movies/WatchedBadge';
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { 
@@ -566,7 +567,8 @@ export default function DashboardPage() {
                 key={log.id}
                 className="p-4 rounded-2xl bg-[#141420] border border-white/5 flex gap-4 hover:border-white/20 transition"
               >
-                <div className="w-16 aspect-[2/3] rounded-xl overflow-hidden shrink-0 bg-zinc-800">
+                <div className="relative w-16 aspect-[2/3] rounded-xl overflow-hidden shrink-0 bg-zinc-800">
+<WatchedBadge movieId={log.tmdb_id ?? 0} className="top-10 left-1" />
                   <img
                     src={getImageUrl(log.custom_poster_path || log.movie?.poster_path, "w200")}
                     alt={log.movie?.title || "Película"}

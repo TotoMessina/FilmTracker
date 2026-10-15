@@ -1,5 +1,6 @@
 "use client";
 
+import { WatchedBadge } from '@/components/movies/WatchedBadge';
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Link from "next/link";
 import { 
@@ -623,6 +624,7 @@ export function SharedWatchlistsSection({
                       href={`/movie/${movie.tmdb_id}`}
                       className="w-20 shrink-0 aspect-[2/3] rounded-2xl overflow-hidden bg-zinc-900 border border-white/10 relative"
                     >
+<WatchedBadge movieId={movie.tmdb_id ?? 0} className="top-10 left-1" />
                       <img
                         src={getImageUrl(movie.poster_path, "w342")}
                         alt={movie.title}
@@ -1100,7 +1102,8 @@ export function SharedWatchlistsSection({
               </div>
             ) : decidedMovie ? (
               <div className="space-y-4 animate-in zoom-in-95 duration-300">
-                <div className="w-32 aspect-[2/3] mx-auto rounded-2xl overflow-hidden bg-zinc-900 border-2 border-amber-400/40 shadow-2xl">
+                <div className="relative w-32 aspect-[2/3] mx-auto rounded-2xl overflow-hidden bg-zinc-900 border-2 border-amber-400/40 shadow-2xl">
+<WatchedBadge movieId={decidedMovie.tmdb_id ?? 0} className="top-10 left-1" />
                   <img
                     src={getImageUrl(decidedMovie.poster_path, "w342")}
                     alt={decidedMovie.title}

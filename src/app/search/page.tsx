@@ -23,7 +23,10 @@ import {
   Layers,
   Check,
   Ticket,
-  Compass
+  Compass,
+  Eye,
+  EyeOff,
+  CheckCircle2
 } from "lucide-react";
 import { 
   TMDBMovie, 
@@ -79,7 +82,7 @@ function SearchContent() {
   const initialPersonName = searchParams.get("personName") || "";
   const initialPersonRole = (searchParams.get("role") as "cast" | "crew") || "crew";
 
-  const { isBlacklisted } = useApp();
+  const { isBlacklisted, isWatched } = useApp();
   const { user } = useAuth();
 
   // User's configured streaming platforms
@@ -142,6 +145,9 @@ function SearchContent() {
   const [selectedDecade, setSelectedDecade] = useState<string>("");
   const [selectedYear, setSelectedYear] = useState<string>("");
   const [sortBy, setSortBy] = useState<string>("popularity.desc");
+  const [watchedFilter, setWatchedFilter] = useState<"all" | "unwatched" | "watched">(
+    (searchParams.get("watched") as "all" | "unwatched" | "watched") || "all"
+  );
 
   // Results State
   const [movies, setMovies] = useState<TMDBMovie[]>([]);
@@ -199,6 +205,10 @@ function SearchContent() {
       setSelectedActorCountry(actorC.toUpperCase());
       setSearchTab("movies");
       setDiscoveryMode("discover");
+    }
+    const watchedParam = searchParams.get("watched") as "all" | "unwatched" | "watched" | null;
+    if (watchedParam && ["all", "unwatched", "watched"].includes(watchedParam)) {
+      setWatchedFilter(watchedParam);
     }
   }, [searchParams]);
 
@@ -479,9 +489,11 @@ function SearchContent() {
     setSelectedDecade("");
     setSelectedYear("");
     setSortBy("popularity.desc");
+    setWatchedFilter("all");
   };
 
   const hasActiveFilters = Boolean(
+    watchedFilter !== "all" ||
     selectedGenre ||
     selectedProvider ||
     (onlyMyPlatforms && userPlatforms.length > 0) ||
@@ -499,6 +511,7 @@ function SearchContent() {
   );
 
   const activeFilterCount = [
+    watchedFilter !== "all",
     selectedGenre !== null,
     selectedProvider !== null,
     onlyMyPlatforms && userPlatforms.length > 0,
@@ -514,7 +527,22 @@ function SearchContent() {
     selectedYear !== "",
   ].filter(Boolean).length;
 
-  const visibleMovies = movies.filter((m) => !isBlacklisted(m.id));
+  const loadedWatchedCount = useMemo(() => {
+    return movies.filter((m) => !isBlacklisted(m.id) && isWatched(m.id)).length;
+  }, [movies, isBlacklisted, isWatched]);
+
+  const loadedUnwatchedCount = useMemo(() => {
+    return movies.filter((m) => !isBlacklisted(m.id) && !isWatched(m.id)).length;
+  }, [movies, isBlacklisted, isWatched]);
+
+  const visibleMovies = useMemo(() => {
+    return movies.filter((m) => {
+      if (isBlacklisted(m.id)) return false;
+      if (watchedFilter === "unwatched") return !isWatched(m.id);
+      if (watchedFilter === "watched") return isWatched(m.id);
+      return true;
+    });
+  }, [movies, isBlacklisted, watchedFilter, isWatched]);
 
   // Handler when clicking a Studio
   const handleSelectStudio = (studio: { id: number; name: string }) => {
@@ -791,6 +819,85 @@ function SearchContent() {
         </div>
       )}
 
+      {/* Quick Watched Status Filter Bar (Vistas / No Vistas) */}
+      {(searchTab === "movies" || searchTab === "all") && (
+        <div className="flex flex-wrap items-center justify-between gap-3 p-2.5 sm:p-3 rounded-2xl bg-[#141420]/80 border border-white/5 shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-zinc-400 flex items-center gap-1.5 uppercase tracking-wider">
+              <Eye className="w-3.5 h-3.5 text-zinc-400" />
+              <span className="hidden sm:inline">¿Qué películas mostrar?</span>
+              <span className="sm:hidden">Mostrar:</span>
+            </span>
+            {watchedFilter !== "all" && (
+              <span className="text-[11px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                {watchedFilter === "unwatched" ? "Ocultando vistas" : "Solo ya vistas"}
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/5 text-xs">
+            <button
+              type="button"
+              onClick={() => setWatchedFilter("all")}
+              className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                watchedFilter === "all"
+                  ? "bg-white text-zinc-950 shadow-md font-extrabold"
+                  : "text-zinc-400 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              <Film className="w-3.5 h-3.5 text-rose-500" />
+              <span>Todas</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setWatchedFilter("unwatched")}
+              className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                watchedFilter === "unwatched"
+                  ? "bg-amber-500 text-black shadow-md shadow-amber-500/20 font-black"
+                  : "text-zinc-400 hover:text-amber-300 hover:bg-white/5"
+              }`}
+              title="Ocultar de la lista las películas que ya registraste como vistas"
+            >
+              <EyeOff className="w-3.5 h-3.5 text-amber-500" />
+              <span>Ocultar ya vistas</span>
+              {loadedWatchedCount > 0 && (
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                    watchedFilter === "unwatched" ? "bg-black/20 text-black" : "bg-white/10 text-zinc-400"
+                  }`}
+                >
+                  -{loadedWatchedCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setWatchedFilter("watched")}
+              className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                watchedFilter === "watched"
+                  ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/25 font-black"
+                  : "text-zinc-400 hover:text-emerald-300 hover:bg-white/5"
+              }`}
+              title="Ver únicamente películas que ya registraste como vistas"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Solo ya vistas</span>
+              {loadedWatchedCount > 0 && (
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                    watchedFilter === "watched" ? "bg-black/20 text-white" : "bg-white/10 text-zinc-400"
+                  }`}
+                >
+                  {loadedWatchedCount}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Active Filters Pill Bar */}
       {hasActiveFilters && (
         <div className="flex items-center gap-2 flex-wrap p-3 rounded-2xl bg-[#141420]/80 border border-white/5">
@@ -798,6 +905,26 @@ function SearchContent() {
             <Filter className="w-3 h-3 text-red-400" />
             Filtros activos:
           </span>
+
+          {watchedFilter === "unwatched" && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/15 text-amber-300 border border-amber-500/30 text-xs font-medium">
+              <EyeOff className="w-3 h-3 text-amber-400" />
+              <span>Ocultando ya vistas ({loadedWatchedCount})</span>
+              <button onClick={() => setWatchedFilter("all")} className="hover:text-white">
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
+
+          {watchedFilter === "watched" && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-xs font-medium">
+              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+              <span>Solo ya vistas ({loadedWatchedCount})</span>
+              <button onClick={() => setWatchedFilter("all")} className="hover:text-white">
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
 
           {onlyMyPlatforms && userPlatforms.length > 0 && (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-purple-500/15 text-purple-300 border border-purple-500/30 text-xs font-medium">
@@ -953,6 +1080,63 @@ function SearchContent() {
                 <span>Restablecer todo</span>
               </button>
             )}
+          </div>
+
+          {/* 0. Watched Status Filter (Películas Vistas / No Vistas) */}
+          <div className="space-y-2.5 pb-4 border-b border-white/5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                <Eye className="w-3.5 h-3.5 text-amber-400" />
+                Estado de Visualización en tu Diario
+              </span>
+              {watchedFilter !== "all" && (
+                <button
+                  type="button"
+                  onClick={() => setWatchedFilter("all")}
+                  className="text-[11px] text-zinc-400 hover:text-white"
+                >
+                  Restablecer a &quot;Todas&quot;
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setWatchedFilter("all")}
+                className={`px-3.5 py-2.5 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-2 cursor-pointer ${
+                  watchedFilter === "all"
+                    ? "bg-white text-zinc-950 border-white shadow-md"
+                    : "bg-white/5 border-white/10 text-zinc-300 hover:text-white hover:bg-white/10"
+                }`}
+              >
+                <Film className="w-3.5 h-3.5 text-rose-500" />
+                <span>Mostrar Todas</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setWatchedFilter("unwatched")}
+                className={`px-3.5 py-2.5 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-2 cursor-pointer ${
+                  watchedFilter === "unwatched"
+                    ? "bg-amber-500 text-black border-amber-400 shadow-md shadow-amber-500/20 font-black"
+                    : "bg-white/5 border-white/10 text-zinc-300 hover:text-amber-300 hover:bg-white/10"
+                }`}
+              >
+                <EyeOff className="w-3.5 h-3.5 text-amber-500" />
+                <span>Ocultar ya vistas ({loadedUnwatchedCount})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setWatchedFilter("watched")}
+                className={`px-3.5 py-2.5 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-2 cursor-pointer ${
+                  watchedFilter === "watched"
+                    ? "bg-emerald-600 text-white border-emerald-500 shadow-md shadow-emerald-600/20 font-black"
+                    : "bg-white/5 border-white/10 text-zinc-300 hover:text-emerald-300 hover:bg-white/10"
+                }`}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Solo ya vistas ({loadedWatchedCount})</span>
+              </button>
+            </div>
           </div>
 
           {/* 1. Studios / Iconic Production Companies */}
@@ -1411,10 +1595,17 @@ function SearchContent() {
 
           {/* Movies Section in All View */}
           <div className="space-y-4">
-            <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-              <Film className="w-5 h-5 text-red-500" />
-              <span>Películas encontradas ({visibleMovies.length})</span>
-            </h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                <Film className="w-5 h-5 text-red-500" />
+                <span>Películas encontradas ({visibleMovies.length})</span>
+              </h2>
+              {watchedFilter !== "all" && (
+                <span className="text-xs text-zinc-400">
+                  {watchedFilter === "unwatched" ? `Ocultando ${loadedWatchedCount} ya vistas` : `Mostrando solo ${loadedWatchedCount} ya vistas`}
+                </span>
+              )}
+            </div>
             {visibleMovies.length > 0 ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 sm:gap-4">
                 {visibleMovies.map((movie) => (
@@ -1422,9 +1613,29 @@ function SearchContent() {
                 ))}
               </div>
             ) : !loading ? (
-              <div className="p-8 text-center bg-white/5 rounded-2xl text-zinc-400 text-sm">
-                No se encontraron películas para esta búsqueda.
-              </div>
+              watchedFilter === "unwatched" && movies.length > 0 ? (
+                <div className="p-8 text-center bg-[#141420] border border-amber-500/20 rounded-2xl space-y-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
+                    <EyeOff className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-base font-bold text-white">
+                    ¡Ya has visto todas las {movies.length} películas encontradas en esta búsqueda!
+                  </h3>
+                  <p className="text-xs text-zinc-400 max-w-md mx-auto">
+                    Puedes desactivar el filtro para volver a verlas o buscar otro término.
+                  </p>
+                  <button
+                    onClick={() => setWatchedFilter("all")}
+                    className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition"
+                  >
+                    Ver todas las películas
+                  </button>
+                </div>
+              ) : (
+                <div className="p-8 text-center bg-white/5 rounded-2xl text-zinc-400 text-sm">
+                  No se encontraron películas para esta búsqueda.
+                </div>
+              )
             ) : null}
           </div>
         </div>
@@ -1512,13 +1723,68 @@ function SearchContent() {
               ))}
             </div>
           ) : !loading ? (
-            <div className="text-center py-20 bg-[#141420]/50 rounded-3xl border border-white/5 p-8">
-              <Film className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
-              <h3 className="text-lg font-bold text-white">No se encontraron películas</h3>
-              <p className="text-sm text-zinc-400 mt-1 max-w-sm mx-auto">
-                Prueba relajando algunos filtros aplicados o buscando otro título.
-              </p>
-            </div>
+            watchedFilter === "unwatched" && movies.length > 0 ? (
+              <div className="text-center py-16 bg-[#141420]/80 rounded-3xl border border-amber-500/20 p-8 space-y-4 shadow-xl">
+                <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto shadow-inner">
+                  <EyeOff className="w-7 h-7" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-lg font-black text-white">
+                    ¡Ya has visto todas las {movies.length} películas cargadas en esta vista!
+                  </h3>
+                  <p className="text-xs sm:text-sm text-zinc-400 max-w-md mx-auto">
+                    Tienes activo el filtro <strong className="text-amber-300 font-semibold">&quot;Ocultar ya vistas&quot;</strong>. Carga más resultados de TMDB para descubrir títulos pendientes o desactiva el filtro.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                  {page < totalPages && (
+                    <button
+                      onClick={loadMore}
+                      className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-amber-500/20 cursor-pointer"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      <span>Cargar más resultados</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setWatchedFilter("all")}
+                    className="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold border border-white/10 transition cursor-pointer"
+                  >
+                    Mostrar todas ({movies.length})
+                  </button>
+                </div>
+              </div>
+            ) : watchedFilter === "watched" && movies.length > 0 ? (
+              <div className="text-center py-16 bg-[#141420]/80 rounded-3xl border border-emerald-500/20 p-8 space-y-4 shadow-xl">
+                <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center mx-auto shadow-inner">
+                  <CheckCircle2 className="w-7 h-7" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-lg font-black text-white">
+                    Aún no has marcado como vista ninguna de estas {movies.length} películas
+                  </h3>
+                  <p className="text-xs sm:text-sm text-zinc-400 max-w-md mx-auto">
+                    Puedes marcar las que ya viste haciendo clic en el botón <strong className="text-white">+</strong> de cada película, o cambiar el filtro para ver todo el catálogo.
+                  </p>
+                </div>
+                <div className="pt-2">
+                  <button
+                    onClick={() => setWatchedFilter("all")}
+                    className="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold border border-white/10 transition cursor-pointer"
+                  >
+                    Mostrar todas las películas
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-20 bg-[#141420]/50 rounded-3xl border border-white/5 p-8">
+                <Film className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
+                <h3 className="text-lg font-bold text-white">No se encontraron películas</h3>
+                <p className="text-sm text-zinc-400 mt-1 max-w-sm mx-auto">
+                  Prueba relajando algunos filtros aplicados o buscando otro título.
+                </p>
+              </div>
+            )
           ) : null}
         </div>
       )}

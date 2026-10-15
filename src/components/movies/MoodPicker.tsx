@@ -1,5 +1,6 @@
 "use client";
 
+import { WatchedBadge } from '@/components/movies/WatchedBadge';
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { 
@@ -266,6 +267,7 @@ export function MoodPicker({ items, recentLogs, onMoviePicked }: MoodPickerProps
 
         {/* Poster */}
         <div className="w-40 sm:w-44 aspect-[2/3] rounded-2xl overflow-hidden shadow-2xl border border-white/20 relative group bg-zinc-900">
+<WatchedBadge movieId={result.tmdb_id ?? 0} className="top-10 left-1" />
           <img
             src={getImageUrl(result.poster_path, "w500")}
             alt={result.title}

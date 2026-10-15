@@ -1,5 +1,6 @@
 "use client";
 
+import { WatchedBadge } from '@/components/movies/WatchedBadge';
 import React, { useRef } from "react";
 import { X, Star, Calendar, Clock, Film, Share2, Ticket } from "lucide-react";
 import { useApp } from "@/lib/context/AppContext";
@@ -60,7 +61,8 @@ export function CinemaTicketModal() {
           <div className="p-6 space-y-5">
             {/* Movie Info with Poster */}
             <div className="flex gap-4">
-              <div className="w-24 aspect-[2/3] rounded-xl overflow-hidden shrink-0 shadow-lg border border-amber-500/20">
+              <div className="relative w-24 aspect-[2/3] rounded-xl overflow-hidden shrink-0 shadow-lg border border-amber-500/20">
+<WatchedBadge movieId={activeCinemaTicket.tmdb_id ?? 0} className="top-10 left-1" />
                 <img
                   src={getImageUrl(poster, "w300")}
                   alt={movie?.title || "Póster"}

@@ -1,5 +1,6 @@
 "use client";
 
+import { WatchedBadge } from '@/components/movies/WatchedBadge';
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { 
@@ -287,6 +288,7 @@ export function SagaDetailModal({
                           onClick={onClose}
                           className="w-12 sm:w-14 aspect-[2/3] rounded-xl overflow-hidden bg-zinc-800 shrink-0 relative shadow"
                         >
+<WatchedBadge movieId={movie.id ?? 0} className="top-10 left-1" />
                           <img
                             src={getImageUrl(movie.poster_path, "w200")}
                             alt={movie.title}

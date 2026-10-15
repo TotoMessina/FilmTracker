@@ -1,5 +1,6 @@
 "use client";
 
+import { WatchedBadge } from '@/components/movies/WatchedBadge';
 import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { 
@@ -245,6 +246,7 @@ export function QuickRecommenderModal() {
                         onClick={() => setIsOpen(false)}
                         className="w-16 aspect-[2/3] rounded-xl overflow-hidden bg-zinc-800 shrink-0 shadow-md relative group-hover:opacity-90 transition"
                       >
+<WatchedBadge movieId={rec.tmdb_id ?? 0} className="top-10 left-1" />
                         {rec.poster_path ? (
                           <img
                             src={getImageUrl(rec.poster_path, "w185")}

@@ -1,5 +1,6 @@
 "use client";
 
+import { WatchedBadge } from '@/components/movies/WatchedBadge';
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { 
@@ -517,7 +518,8 @@ export default function FastPickPage() {
               <div className="relative p-6 sm:p-8 space-y-6">
                 <div className="flex flex-col md:flex-row gap-6 sm:gap-8 items-start">
                   {/* Poster */}
-                  <div className="w-40 sm:w-56 shrink-0 rounded-2xl overflow-hidden border-2 border-amber-500/40 shadow-2xl shadow-amber-950/60 bg-zinc-900 aspect-[2/3] self-center md:self-start">
+                  <div className="relative w-40 sm:w-56 shrink-0 rounded-2xl overflow-hidden border-2 border-amber-500/40 shadow-2xl shadow-amber-950/60 bg-zinc-900 aspect-[2/3] self-center md:self-start">
+<WatchedBadge movieId={result.tmdb_id ?? 0} className="top-10 left-1" />
                     {result.poster_path ? (
                       <img
                         src={getImageUrl(result.poster_path, "w500")}

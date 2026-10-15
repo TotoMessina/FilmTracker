@@ -1,5 +1,6 @@
 "use client";
 
+import { WatchedBadge } from '@/components/movies/WatchedBadge';
 import React, { useState, useEffect, use } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -322,6 +323,7 @@ export default function CineclubDetailPage({
             <div className="p-6 sm:p-8 rounded-3xl bg-black/60 border border-white/10 backdrop-blur-xl flex flex-col md:flex-row items-center md:items-start gap-6 sm:gap-8 shadow-2xl">
               {/* Poster */}
               <div className="relative w-44 sm:w-52 aspect-[2/3] rounded-2xl overflow-hidden bg-zinc-900 border border-white/20 shadow-2xl shrink-0">
+<WatchedBadge movieId={club.current_movie.tmdb_id ?? 0} className="top-10 left-1" />
                 {club.current_movie.poster_path ? (
                   <Image
                     src={getImageUrl(club.current_movie.poster_path, "w500")}

@@ -1,5 +1,6 @@
 "use client";
 
+import { WatchedBadge } from '@/components/movies/WatchedBadge';
 import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { 
@@ -751,6 +752,7 @@ export default function Grandes163Page() {
                 >
                   {/* Poster Container */}
                   <div className="relative aspect-[2/3] w-full overflow-hidden bg-zinc-900">
+<WatchedBadge movieId={movie.tmdbId ?? 0} className="top-10 left-1" />
                     <img
                       src={getImageUrl(movie.poster_path, "w500")}
                       alt={movie.title}
@@ -906,6 +908,7 @@ export default function Grandes163Page() {
                       href={`/movie/${movie.tmdbId}`}
                       className="w-12 sm:w-16 aspect-[2/3] rounded-xl overflow-hidden bg-zinc-800 shrink-0 relative shadow"
                     >
+<WatchedBadge movieId={movie.tmdbId ?? 0} className="top-10 left-1" />
                       <img
                         src={getImageUrl(movie.poster_path, "w200")}
                         alt={movie.title}

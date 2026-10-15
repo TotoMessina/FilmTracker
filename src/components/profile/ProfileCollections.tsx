@@ -1,5 +1,6 @@
 "use client";
 
+import { WatchedBadge } from '@/components/movies/WatchedBadge';
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { 
@@ -396,7 +397,8 @@ export function ProfileCollections({
                         href={`/movie/${m.tmdb_id}`}
                         className="group relative flex flex-col rounded-2xl overflow-hidden bg-black/40 border border-white/5 hover:border-white/20 transition shadow-lg"
                       >
-                        <div className="aspect-[2/3] w-full overflow-hidden bg-zinc-900">
+                        <div className="relative aspect-[2/3] w-full overflow-hidden bg-zinc-900">
+<WatchedBadge movieId={m.tmdb_id ?? 0} className="top-10 left-1" />
                           <img
                             src={getImageUrl(m.poster_path, "w500")}
                             alt={m.title}
@@ -513,6 +515,7 @@ export function ProfileCollections({
                         key={m.tmdb_id}
                         className="relative w-20 shrink-0 aspect-[2/3] rounded-xl overflow-hidden bg-zinc-900 border border-white/10 group"
                       >
+<WatchedBadge movieId={m.tmdb_id ?? 0} className="top-10 left-1" />
                         <img
                           src={getImageUrl(m.poster_path, "w185")}
                           alt={m.title}

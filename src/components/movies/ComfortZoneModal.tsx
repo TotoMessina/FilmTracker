@@ -1,5 +1,6 @@
 "use client";
 
+import { WatchedBadge } from '@/components/movies/WatchedBadge';
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { 
@@ -140,6 +141,7 @@ export function FaithLeapCard({
         <div className="flex flex-col sm:flex-row gap-6 items-start">
           {/* Movie Poster */}
           <div className="w-32 sm:w-44 shrink-0 rounded-2xl overflow-hidden border-2 border-purple-500/40 shadow-xl shadow-purple-950/60 bg-black/60 group relative aspect-[2/3] self-center sm:self-start">
+<WatchedBadge movieId={result.tmdb_id ?? 0} className="top-10 left-1" />
             {result.poster_path ? (
               <img
                 src={getImageUrl(result.poster_path, "w500")}

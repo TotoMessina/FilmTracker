@@ -8,6 +8,7 @@ import { useApp } from "@/lib/context/AppContext";
 import { useAuth } from "@/lib/context/AuthContext";
 import { supabase } from "@/lib/supabase/client";
 import { getCachedCinemaStatus, getNowPlayingStatusMap, CinemaStatus } from "@/lib/services/cinema";
+import { WatchedBadge } from './WatchedBadge';
 
 interface MovieCardProps {
   movie: TMDBMovie | {
@@ -134,6 +135,7 @@ export function MovieCard({ movie, onLogClick, showBlacklistAction = true, cinem
         />
 
         {/* Rating badge */}
+        <WatchedBadge movieId={movie.id} className="top-10 left-2" />
         {rating && (
           <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-black/75 backdrop-blur-md text-amber-400 border border-white/10 shadow-md">
             <Star className="w-3 h-3 fill-amber-400 text-amber-400" />

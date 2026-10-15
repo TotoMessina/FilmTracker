@@ -1,5 +1,6 @@
 "use client";
 
+import { WatchedBadge } from '@/components/movies/WatchedBadge';
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { Sparkles, Search, Film, AlertCircle, RefreshCw, Info } from "lucide-react";
@@ -229,6 +230,7 @@ export function AIRecommendations({
               >
                 {/* Poster container with badges & overlays */}
                 <div className="relative w-full aspect-[2/3] overflow-hidden bg-zinc-950">
+<WatchedBadge movieId={rec.tmdb_id ?? 0} className="top-10 left-1" />
                   <img
                     src={posterSrc}
                     alt={rec.title}

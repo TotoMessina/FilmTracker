@@ -1,5 +1,6 @@
 "use client";
 
+import { WatchedBadge } from '@/components/movies/WatchedBadge';
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { 
@@ -189,7 +190,8 @@ export default function TournamentPage() {
             </h2>
           </div>
 
-          <div className="w-48 aspect-[2/3] rounded-2xl overflow-hidden mx-auto shadow-2xl border-2 border-amber-500/50 shadow-amber-500/20">
+          <div className="relative w-48 aspect-[2/3] rounded-2xl overflow-hidden mx-auto shadow-2xl border-2 border-amber-500/50 shadow-amber-500/20">
+<WatchedBadge movieId={champion.id ?? 0} className="top-10 left-1" />
             <img
               src={getImageUrl(champion.poster_path, "w500")}
               alt={champion.title}
@@ -245,7 +247,8 @@ export default function TournamentPage() {
                   onClick={() => handlePickWinner(movieA)}
                   className="group relative flex flex-col items-center p-5 sm:p-6 rounded-3xl bg-[#141420] border-2 border-white/5 hover:border-red-500 hover:shadow-2xl hover:shadow-red-950/40 transition-all duration-300 active:scale-98 text-center"
                 >
-                  <div className="w-36 sm:w-56 aspect-[2/3] rounded-2xl overflow-hidden shadow-xl mb-3 sm:mb-4 group-hover:scale-105 transition-transform duration-300">
+                  <div className="relative w-36 sm:w-56 aspect-[2/3] rounded-2xl overflow-hidden shadow-xl mb-3 sm:mb-4 group-hover:scale-105 transition-transform duration-300">
+<WatchedBadge movieId={movieA.id ?? 0} className="top-10 left-1" />
                     <img
                       src={getImageUrl(movieA.poster_path, "w500")}
                       alt={movieA.title}
@@ -270,7 +273,8 @@ export default function TournamentPage() {
                   onClick={() => handlePickWinner(movieB)}
                   className="group relative flex flex-col items-center p-5 sm:p-6 rounded-3xl bg-[#141420] border-2 border-white/5 hover:border-red-500 hover:shadow-2xl hover:shadow-red-950/40 transition-all duration-300 active:scale-98 text-center"
                 >
-                  <div className="w-36 sm:w-56 aspect-[2/3] rounded-2xl overflow-hidden shadow-xl mb-3 sm:mb-4 group-hover:scale-105 transition-transform duration-300">
+                  <div className="relative w-36 sm:w-56 aspect-[2/3] rounded-2xl overflow-hidden shadow-xl mb-3 sm:mb-4 group-hover:scale-105 transition-transform duration-300">
+<WatchedBadge movieId={movieB.id ?? 0} className="top-10 left-1" />
                     <img
                       src={getImageUrl(movieB.poster_path, "w500")}
                       alt={movieB.title}

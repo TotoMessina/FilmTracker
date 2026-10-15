@@ -1,5 +1,6 @@
 "use client";
 
+import { WatchedBadge } from '@/components/movies/WatchedBadge';
 import React, { useState, useEffect } from "react";
 import { 
   X, 
@@ -661,6 +662,7 @@ export function LogMovieModal() {
           {/* Movie Preview Header */}
           <div className="flex gap-4 items-start bg-white/5 p-4 rounded-2xl border border-white/5">
             <div className="relative group shrink-0 w-20 aspect-[2/3] rounded-xl overflow-hidden shadow-lg bg-zinc-800">
+<WatchedBadge movieId={activeLogMovie.id ?? 0} className="top-10 left-1" />
               <img
                 src={getImageUrl(currentPoster, "w300")}
                 alt={activeLogMovie.title}

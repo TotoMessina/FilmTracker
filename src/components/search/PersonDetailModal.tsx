@@ -1,5 +1,6 @@
 "use client";
 
+import { WatchedBadge } from '@/components/movies/WatchedBadge';
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -226,6 +227,7 @@ export function PersonDetailModal({
                       className="group flex flex-col gap-1.5 p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/20 transition"
                     >
                       <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-black/40">
+<WatchedBadge movieId={movie.id ?? 0} className="top-10 left-1" />
                         <Image
                           src={getImageUrl(movie.poster_path, "w185")}
                           alt={movie.title}

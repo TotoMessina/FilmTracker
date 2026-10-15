@@ -1,5 +1,6 @@
 "use client";
 
+import { WatchedBadge } from '@/components/movies/WatchedBadge';
 import React from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -99,6 +100,7 @@ export function PersonCard({ person, onSelectPerson, onViewDetails }: PersonCard
                   className="group/work relative aspect-[2/3] rounded-lg overflow-hidden bg-white/5 border border-white/10 hover:border-red-500/50 transition-all"
                   title={title}
                 >
+<WatchedBadge movieId={work.id ?? 0} className="top-10 left-1" />
                   <Image
                     src={getImageUrl(work.poster_path, "w185")}
                     alt={title}

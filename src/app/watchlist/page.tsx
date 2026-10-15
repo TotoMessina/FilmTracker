@@ -1,5 +1,6 @@
 "use client";
 
+import { WatchedBadge } from '@/components/movies/WatchedBadge';
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { 
@@ -628,8 +629,9 @@ export default function WatchlistPage() {
                   {/* Poster thumbnail pequeño */}
                   <Link
                     href={`/movie/${item.tmdb_id}`}
-                    className="w-14 sm:w-16 aspect-[2/3] rounded-xl overflow-hidden bg-zinc-900 border border-white/10 shrink-0 group-hover:scale-105 transition-transform"
+                    className="relative w-14 sm:w-16 aspect-[2/3] rounded-xl overflow-hidden bg-zinc-900 border border-white/10 shrink-0 group-hover:scale-105 transition-transform"
                   >
+<WatchedBadge movieId={item.tmdb_id ?? 0} className="top-10 left-1" />
                     <img
                       src={getImageUrl(poster, "w200")}
                       alt={item.title}
@@ -739,6 +741,7 @@ export default function WatchlistPage() {
                   href={`/movie/${item.tmdb_id}`}
                   className="relative aspect-[2/3] w-full overflow-hidden bg-zinc-900 block"
                 >
+<WatchedBadge movieId={item.tmdb_id ?? 0} className="top-10 left-1" />
                   <img
                     src={getImageUrl(poster, "w500")}
                     alt={item.title || "Póster"}
@@ -884,7 +887,8 @@ export default function WatchlistPage() {
               </h3>
             </div>
 
-            <div className="w-40 aspect-[2/3] rounded-2xl overflow-hidden shadow-2xl border border-white/20">
+            <div className="relative w-40 aspect-[2/3] rounded-2xl overflow-hidden shadow-2xl border border-white/20">
+<WatchedBadge movieId={pickedMovie.tmdb_id ?? 0} className="top-10 left-1" />
               <img
                 src={getImageUrl(pickedMovie.movie?.poster_path, "w500")}
                 alt={pickedMovie.title || "Póster"}
@@ -972,8 +976,9 @@ export default function WatchlistPage() {
                   <Link
                     href={`/movie/${exp.tmdb_id}`}
                     onClick={() => setShowExpiringModal(false)}
-                    className="w-14 aspect-[2/3] rounded-xl overflow-hidden bg-zinc-900 shrink-0 border border-white/10 shadow-md"
+                    className="relative w-14 aspect-[2/3] rounded-xl overflow-hidden bg-zinc-900 shrink-0 border border-white/10 shadow-md"
                   >
+<WatchedBadge movieId={exp.tmdb_id ?? 0} className="top-10 left-1" />
                     <img
                       src={getImageUrl(exp.poster_path, "w200")}
                       alt={exp.title}

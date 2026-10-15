@@ -1,5 +1,6 @@
 "use client";
 
+import { WatchedBadge } from '@/components/movies/WatchedBadge';
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import { 
@@ -174,8 +175,9 @@ export function ProfileReviews({ logs }: ProfileReviewsProps) {
                 {/* Poster column */}
                 <Link
                   href={`/movie/${log.tmdb_id}`}
-                  className="w-24 sm:w-28 shrink-0 aspect-[2/3] rounded-2xl overflow-hidden bg-zinc-900 border border-white/10 group shadow-md"
+                  className="relative w-24 sm:w-28 shrink-0 aspect-[2/3] rounded-2xl overflow-hidden bg-zinc-900 border border-white/10 group shadow-md"
                 >
+<WatchedBadge movieId={log.tmdb_id ?? 0} className="top-10 left-1" />
                   <img
                     src={getImageUrl(log.custom_poster_path || log.movie?.poster_path, "w342")}
                     alt={log.movie?.title || "Póster"}
