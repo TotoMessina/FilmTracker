@@ -17,7 +17,8 @@ import {
   Users,
   AlertCircle,
   AlertTriangle,
-  Loader2
+  Loader2,
+  Pencil
 } from "lucide-react";
 import { useApp } from "@/lib/context/AppContext";
 import { useAuth } from "@/lib/context/AuthContext";
@@ -34,7 +35,7 @@ import { checkNewBadges, persistAndNotifyUnlockedBadges } from "@/lib/gamificati
 import { checkAndUpdateMonthlyChallenges } from "@/lib/services/challenges";
 import { Profile, Log } from "@/lib/supabase/types";
 import { fetchAllUserLogs } from "@/lib/services/logs";
-import { getExistingUserLog } from "@/lib/services/quickLog";
+import { getExistingUserLog, getAllUserMovieLogs } from "@/lib/services/quickLog";
 
 const PLATFORMS = [
   "Netflix",
@@ -79,12 +80,46 @@ export function LogMovieModal() {
   const [followers, setFollowers] = useState<Profile[]>([]);
   const [selectedCompanionIds, setSelectedCompanionIds] = useState<string[]>([]);
 
-  // Auto-detected existing log (to prevent duplicate registrations)
-  const [detectedExistingLog, setDetectedExistingLog] = useState<Log | null>(null);
+  // Existing movie logs history & mode (allows logging multiple rewatches with different dates)
+  const [allExistingLogs, setAllExistingLogs] = useState<Log[]>([]);
+  const [modalMode, setModalMode] = useState<"new_rewatch" | "edit_existing">("new_rewatch");
+  const [selectedLogToEdit, setSelectedLogToEdit] = useState<Log | null>(null);
 
   // AI Review Assistant
   const [generatingReview, setGeneratingReview] = useState(false);
   const [aiReviewToast, setAiReviewToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  const applyLogData = (logItem: Log) => {
+    const hasDate = Boolean(logItem.watched_at);
+    setNoExactDate(!hasDate);
+    setWatchedAt(logItem.watched_at || new Date().toISOString().split("T")[0]);
+    setRating(logItem.rating ?? 7.0);
+    setIsRewatch(logItem.is_rewatch || false);
+    setContainsSpoilers(Boolean(logItem.contains_spoilers));
+    setPlatform(logItem.platform || "Netflix");
+    setFormat(logItem.format || "Normal");
+    setReview(logItem.review || "");
+    setNotes(logItem.notes || "");
+    setCustomPosterPath(logItem.custom_poster_path || null);
+  };
+
+  const handleSwitchToNewRewatch = () => {
+    setModalMode("new_rewatch");
+    setIsRewatch(true);
+    setWatchedAt(new Date().toISOString().split("T")[0]);
+    setNoExactDate(false);
+    setReview("");
+    setNotes("");
+    if (allExistingLogs[0]?.rating) {
+      setRating(allExistingLogs[0].rating);
+    }
+  };
+
+  const handleSwitchToEditExisting = (targetLog: Log) => {
+    setModalMode("edit_existing");
+    setSelectedLogToEdit(targetLog);
+    applyLogData(targetLog);
+  };
 
   // Load details when modal opens
   useEffect(() => {
@@ -93,26 +128,14 @@ export function LogMovieModal() {
     setErrorMsg(null);
     const tmdbId = activeLogMovie.id;
 
-    const applyLogData = (logItem: Log) => {
-      const hasDate = Boolean(logItem.watched_at);
-      setNoExactDate(!hasDate);
-      setWatchedAt(logItem.watched_at || new Date().toISOString().split("T")[0]);
-      setRating(logItem.rating ?? 7.0);
-      setIsRewatch(logItem.is_rewatch || false);
-      setContainsSpoilers(Boolean(logItem.contains_spoilers));
-      setPlatform(logItem.platform || "Netflix");
-      setFormat(logItem.format || "Normal");
-      setReview(logItem.review || "");
-      setNotes(logItem.notes || "");
-      setCustomPosterPath(logItem.custom_poster_path || null);
-    };
-
-    // Prefill if editing
+    // Prefill if editing a specific log explicitly passed (e.g. from diary)
     if (editingLog) {
       applyLogData(editingLog);
-      setDetectedExistingLog(null);
+      setSelectedLogToEdit(editingLog);
+      setModalMode("edit_existing");
+      setAllExistingLogs([editingLog]);
     } else {
-      // Default new log
+      // Default initial state for a new log
       setNoExactDate(false);
       setWatchedAt(new Date().toISOString().split("T")[0]);
       setRating(7.0);
@@ -124,13 +147,33 @@ export function LogMovieModal() {
       setNotes("");
       setCustomPosterPath(null);
       setSelectedCompanionIds([]);
-      setDetectedExistingLog(null);
+      setSelectedLogToEdit(null);
+      setModalMode("new_rewatch");
 
-      // Automatically check if user already logged this movie to prevent duplicates
-      getExistingUserLog(tmdbId, user?.id, Boolean(isGuest || !user)).then((foundLog) => {
-        if (foundLog) {
-          applyLogData(foundLog);
-          setDetectedExistingLog(foundLog);
+      // Check all existing logs for this movie
+      getAllUserMovieLogs(tmdbId, user?.id, Boolean(isGuest || !user)).then((logs) => {
+        if (logs && logs.length > 0) {
+          setAllExistingLogs(logs);
+          setSelectedLogToEdit(logs[0]);
+          // Default to registering a new rewatch with today's date
+          setModalMode("new_rewatch");
+          setIsRewatch(true);
+          setWatchedAt(new Date().toISOString().split("T")[0]);
+          setNoExactDate(false);
+          if (typeof logs[0].rating === "number") {
+            setRating(logs[0].rating);
+          }
+          if (logs[0].platform) {
+            setPlatform(logs[0].platform);
+          }
+          if (logs[0].format) {
+            setFormat(logs[0].format);
+          }
+        } else {
+          setAllExistingLogs([]);
+          setSelectedLogToEdit(null);
+          setModalMode("new_rewatch");
+          setIsRewatch(false);
         }
       });
     }
@@ -271,7 +314,8 @@ export function LogMovieModal() {
           ];
         }
 
-        const activeEditLog = editingLog || detectedExistingLog;
+        const isEditingExisting = modalMode === "edit_existing";
+        const activeEditLog = isEditingExisting ? (selectedLogToEdit || editingLog) : null;
         const newLog = {
           id: activeEditLog ? activeEditLog.id : `guest-log-${Date.now()}`,
           user_id: "guest-user-123",
@@ -303,12 +347,10 @@ export function LogMovieModal() {
         };
 
         let updatedLogs;
-        const existingIdx = guestLogs.findIndex(
-          (l: any) => (activeEditLog && l.id === activeEditLog.id) || l.tmdb_id === tmdbId
-        );
-        if (existingIdx !== -1) {
-          updatedLogs = guestLogs.map((l: any, idx: number) => (idx === existingIdx ? newLog : l));
+        if (isEditingExisting && activeEditLog) {
+          updatedLogs = guestLogs.map((l: any) => (l.id === activeEditLog.id ? newLog : l));
         } else {
+          // Prepend new viewing / rewatch without overwriting previous viewings
           updatedLogs = [newLog, ...guestLogs];
         }
 
@@ -389,24 +431,11 @@ export function LogMovieModal() {
       }
 
       // Step B: Insert or Update Log
-      const activeEditLog = editingLog || detectedExistingLog;
-      let logId = activeEditLog?.id;
+      const isEditingExisting = modalMode === "edit_existing";
+      const targetEditLog = isEditingExisting ? (selectedLogToEdit || editingLog) : null;
+      let logId = targetEditLog?.id || null;
 
-      if (!logId) {
-        // Fallback check to guarantee no duplicate creation
-        const { data: existingRows } = await supabase
-          .from("logs")
-          .select("id")
-          .eq("user_id", activeUserId)
-          .eq("tmdb_id", tmdbId)
-          .order("created_at", { ascending: false })
-          .limit(1);
-        if (existingRows && existingRows.length > 0) {
-          logId = existingRows[0].id;
-        }
-      }
-
-      if (logId) {
+      if (isEditingExisting && logId) {
         const { error: updateError } = await supabase
           .from("logs")
           .update({
@@ -539,7 +568,11 @@ export function LogMovieModal() {
           <div className="flex items-center gap-2">
             <Film className="w-5 h-5 text-red-500" />
             <h2 className="text-base sm:text-lg font-bold text-white">
-              {editingLog || detectedExistingLog ? "Editar registro de película" : "Registrar película en el diario"}
+              {modalMode === "new_rewatch" && allExistingLogs.length > 0
+                ? "Registrar nuevo Rewatch"
+                : (editingLog || modalMode === "edit_existing")
+                ? "Editar registro de película"
+                : "Registrar película en el diario"}
             </h2>
           </div>
           <button
@@ -552,13 +585,69 @@ export function LogMovieModal() {
 
         {/* Content Form */}
         <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 sm:space-y-6">
-          {detectedExistingLog && !editingLog && (
-            <div className="flex items-center justify-between p-3 rounded-2xl bg-blue-950/40 border border-blue-500/30 text-xs text-blue-200">
-              <div className="flex items-center gap-1.5">
-                <span className="font-bold text-blue-300">✓ Película ya registrada:</span>
-                <span>Se cargaron tus datos actuales para actualizar tu registro sin duplicarlo.</span>
+          {allExistingLogs.length > 0 && !editingLog && (
+            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-purple-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    Ya la viste {allExistingLogs.length} {allExistingLogs.length === 1 ? "vez" : "veces"}
+                  </span>
+                  <span className="text-xs font-bold text-white">
+                    {modalMode === "new_rewatch" ? "Nuevo Rewatch (Nueva fecha)" : "Editar registro previo"}
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-300">
+                  {modalMode === "new_rewatch"
+                    ? "Se añadirá esta nueva visualización a tu diario y sumará tiempo a tus estadísticas sin pisar las anteriores."
+                    : `Modificando los datos de tu visualización del ${selectedLogToEdit?.watched_at || "sin fecha"}.`}
+                </p>
+                {modalMode === "edit_existing" && allExistingLogs.length > 1 && (
+                  <div className="pt-1.5 flex items-center gap-2 text-xs">
+                    <span className="text-zinc-400">Seleccionar fecha:</span>
+                    <select
+                      value={selectedLogToEdit?.id}
+                      onChange={(e) => {
+                        const target = allExistingLogs.find((l) => l.id === e.target.value);
+                        if (target) handleSwitchToEditExisting(target);
+                      }}
+                      className="bg-black/60 border border-white/20 rounded-lg px-2 py-1 text-white text-xs"
+                    >
+                      {allExistingLogs.map((l) => (
+                        <option key={l.id} value={l.id}>
+                          {l.watched_at || "Sin fecha"} • {l.rating ? `${l.rating}★` : "Sin nota"} {l.is_rewatch ? "(Rewatch)" : "(1ª vez)"}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
-              <span className="text-[10px] text-blue-400 font-mono">Modo Edición</span>
+
+              <div className="flex items-center gap-1.5 p-1 bg-black/50 rounded-xl border border-white/10 shrink-0 self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={handleSwitchToNewRewatch}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                    modalMode === "new_rewatch"
+                      ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm"
+                      : "text-zinc-400 hover:text-white"
+                  }`}
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>+ Nuevo Rewatch</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSwitchToEditExisting(allExistingLogs[0])}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer ${
+                    modalMode === "edit_existing"
+                      ? "bg-white/15 text-white border border-white/10"
+                      : "text-zinc-400 hover:text-white"
+                  }`}
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  <span>Editar anterior</span>
+                </button>
+              </div>
             </div>
           )}
 
@@ -878,11 +967,13 @@ export function LogMovieModal() {
             <button
               type="submit"
               disabled={saving}
-              className="flex items-center justify-center gap-2 px-6 py-2.5 sm:py-2 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 shadow-lg shadow-red-600/30 active:scale-95 disabled:opacity-50 transition text-center"
+              className="flex items-center justify-center gap-2 px-6 py-2.5 sm:py-2 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 shadow-lg shadow-red-600/30 active:scale-95 disabled:opacity-50 transition text-center cursor-pointer"
             >
               {saving
                 ? "Guardando..."
-                : (editingLog || detectedExistingLog)
+                : modalMode === "new_rewatch" && allExistingLogs.length > 0
+                ? "Guardar nuevo Rewatch (+1 vista)"
+                : (editingLog || modalMode === "edit_existing")
                 ? "Actualizar Registro"
                 : "Guardar en el Diario"}
             </button>

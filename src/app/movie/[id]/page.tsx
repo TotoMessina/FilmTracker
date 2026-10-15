@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
@@ -21,7 +21,8 @@ import {
   Clapperboard,
   Ticket,
   Zap,
-  Layers
+  Layers,
+  RotateCcw
 } from "lucide-react";
 import { 
   TMDBMovie, 
@@ -43,7 +44,7 @@ import { TriggerWarningsSection } from "@/components/movies/TriggerWarningsSecti
 import { MoviePitchModal } from "@/components/movies/MoviePitchModal";
 import { RecapExpress } from "@/components/movies/RecapExpress";
 import { MovieQuickLogInline } from "@/components/movies/MovieQuickLogInline";
-import { getExistingUserLog } from "@/lib/services/quickLog";
+import { getExistingUserLog, getAllUserMovieLogs } from "@/lib/services/quickLog";
 
 export default function MovieDetailPage() {
   const params = useParams();
@@ -60,8 +61,21 @@ export default function MovieDetailPage() {
   const [cinemaStatus, setCinemaStatus] = useState<CinemaStatus | null>(null);
   const [userWatchedIds, setUserWatchedIds] = useState<Set<number>>(new Set());
   const [userMovieLog, setUserMovieLog] = useState<Log | null>(null);
+  const [allUserMovieLogs, setAllUserMovieLogs] = useState<Log[]>([]);
   const [isPitchModalOpen, setIsPitchModalOpen] = useState(false);
   const [isQuickLogInlineOpen, setIsQuickLogInlineOpen] = useState(false);
+
+  // Load this user's specific logs for this movie
+  const loadUserMovieLog = useCallback(() => {
+    if (!tmdbId) return;
+    getAllUserMovieLogs(tmdbId, user?.id, Boolean(isGuest || !user)).then((logs) => {
+      setAllUserMovieLogs(logs || []);
+      setUserMovieLog(logs?.[0] || null);
+      if (logs && logs.length > 0) {
+        setUserWatchedIds((prev) => new Set(prev).add(tmdbId));
+      }
+    });
+  }, [tmdbId, user?.id, isGuest]);
 
   useEffect(() => {
     if (!tmdbId) return;
@@ -117,15 +131,6 @@ export default function MovieDetailPage() {
       setUserWatchedIds(new Set(guestLogs.map((l: any) => l.tmdb_id)));
     }
 
-    // Load this user's specific log for this movie
-    const loadUserMovieLog = () => {
-      getExistingUserLog(tmdbId, user?.id, Boolean(isGuest || !user)).then((log) => {
-        setUserMovieLog(log);
-        if (log) {
-          setUserWatchedIds((prev) => new Set(prev).add(tmdbId));
-        }
-      });
-    };
     loadUserMovieLog();
 
     const handleLogUpdated = () => {
@@ -140,7 +145,7 @@ export default function MovieDetailPage() {
     return () => {
       window.removeEventListener("filmtracker_log_updated", handleLogUpdated);
     };
-  }, [tmdbId, user, isGuest]);
+  }, [tmdbId, user, isGuest, loadUserMovieLog]);
 
   const handleToggleWatchlist = async () => {
     if (!movie) return;
@@ -322,6 +327,24 @@ export default function MovieDetailPage() {
               </div>
             )}
 
+            {/* Viewing History Banner */}
+            {allUserMovieLogs.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 p-3 rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-purple-500/10 border border-amber-500/30 text-xs animate-in fade-in">
+                <div className="flex items-center gap-1.5 text-amber-300 font-bold">
+                  <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                  <span>
+                    {allUserMovieLogs.length === 1
+                      ? "Película en tu diario (1 visualización)"
+                      : `¡Has visto esta película ${allUserMovieLogs.length} veces!`}
+                  </span>
+                </div>
+                <span className="text-zinc-600">•</span>
+                <span className="text-zinc-300">
+                  Fechas: {allUserMovieLogs.map((l) => l.watched_at || "Sin fecha").join(" • ")}
+                </span>
+              </div>
+            )}
+
             {/* Action Buttons */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 pt-2">
               {/* Opción 5: Carga Rápida Button */}
@@ -338,24 +361,38 @@ export default function MovieDetailPage() {
                 title="Carga Rápida en 1 clic (Opción 5)"
               >
                 <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
-                <span>{userMovieLog ? "Editar Rápido ⚡" : "Carga Rápida ⚡"}</span>
+                <span>Carga Rápida ⚡</span>
               </button>
 
-              <button
-                onClick={() => openLogModal(movie, userMovieLog || undefined)}
-                className={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-2xl font-bold text-xs sm:text-sm shadow-xl active:scale-95 transition ${
-                  userMovieLog
-                    ? "bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white shadow-orange-600/30"
-                    : "bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-red-600/30"
-                }`}
-              >
-                {userMovieLog ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                <span>
-                  {userMovieLog
-                    ? `Editar mi Registro (${userMovieLog.rating !== null ? `${userMovieLog.rating}★` : "Sin nota"})`
-                    : "Registrar / Puntuar"}
-                </span>
-              </button>
+              {allUserMovieLogs.length > 0 ? (
+                <>
+                  <button
+                    onClick={() => openLogModal(movie, undefined)}
+                    className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-2xl font-bold text-xs sm:text-sm shadow-xl active:scale-95 transition bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white shadow-orange-600/30 cursor-pointer"
+                    title="Registrar una nueva fecha de visualización manteniendo las anteriores"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    <span>+ Nuevo Rewatch</span>
+                  </button>
+
+                  <button
+                    onClick={() => openLogModal(movie, userMovieLog || allUserMovieLogs[0] || undefined)}
+                    className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 rounded-2xl font-semibold text-xs sm:text-sm border border-white/15 bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white transition active:scale-95 cursor-pointer"
+                    title="Modificar los datos de tu registro anterior"
+                  >
+                    <Check className="w-4 h-4 text-emerald-400" />
+                    <span>Editar registro ({userMovieLog?.rating !== null && userMovieLog?.rating !== undefined ? `${userMovieLog.rating}★` : "Sin nota"})</span>
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => openLogModal(movie, undefined)}
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-2xl font-bold text-xs sm:text-sm shadow-xl active:scale-95 transition bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-red-600/30 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Registrar / Puntuar</span>
+                </button>
+              )}
 
               <button
                 onClick={handleToggleWatchlist}
@@ -386,12 +423,12 @@ export default function MovieDetailPage() {
               <div className="pt-2 animate-in fade-in slide-in-from-top-2 duration-200">
                 <MovieQuickLogInline
                   movie={movie}
-                  userWatched={Boolean(userMovieLog) || userWatchedIds.has(tmdbId)}
+                  userWatched={allUserMovieLogs.length > 0}
                   existingLog={userMovieLog}
                   onClose={() => setIsQuickLogInlineOpen(false)}
                   onLogged={() => {
                     setUserWatchedIds((prev) => new Set(prev).add(tmdbId));
-                    getExistingUserLog(tmdbId, user?.id, Boolean(isGuest || !user)).then(setUserMovieLog);
+                    loadUserMovieLog();
                   }}
                 />
               </div>

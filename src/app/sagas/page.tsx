@@ -66,7 +66,7 @@ export default function SagasPage() {
   // Dynamic Search Results
   const [tmdbSearchResults, setTmdbSearchResults] = useState<TMDBCollectionItem[]>([]);
   const [searchingTMDB, setSearchingTMDB] = useState(false);
-  const [visibleSecondaryCount, setVisibleSecondaryCount] = useState(24);
+  const [visibleSecondaryCount, setVisibleSecondaryCount] = useState(36);
 
   // Modal State
   const [activeSagaId, setActiveSagaId] = useState<number | null>(null);
@@ -278,16 +278,31 @@ export default function SagasPage() {
     const curatedIds = new Set(CURATED_SAGAS.map((s) => s.id));
     const available = SECONDARY_SAGAS.filter((s) => !curatedIds.has(s.id));
 
-    if (!debouncedSearch) return available;
-
-    const q = debouncedSearch.toLowerCase().trim();
     return available.filter((s) => {
-      const matchesName = s.name.toLowerCase().includes(q);
-      const matchesFull = s.fullName?.toLowerCase().includes(q);
-      const matchesOverview = s.overview?.toLowerCase().includes(q);
-      return matchesName || matchesFull || matchesOverview;
+      // Search query filter
+      if (debouncedSearch) {
+        const q = debouncedSearch.toLowerCase().trim();
+        const matchesName = s.name.toLowerCase().includes(q);
+        const matchesFull = s.fullName?.toLowerCase().includes(q);
+        const matchesOverview = s.overview?.toLowerCase().includes(q);
+        if (!matchesName && !matchesFull && !matchesOverview) return false;
+      }
+
+      // Status filter
+      if (statusFilter !== "all") {
+        const partIds = s.partIds || [];
+        const total = partIds.length > 0 ? partIds.length : (s.totalMovies || 1);
+        const watched = partIds.filter((id) => userWatchedIds.has(id)).length;
+        const isCompleted = total > 0 && watched === total;
+
+        if (statusFilter === "completed" && !isCompleted) return false;
+        if (statusFilter === "in_progress" && (watched === 0 || isCompleted)) return false;
+        if (statusFilter === "not_started" && watched > 0) return false;
+      }
+
+      return true;
     });
-  }, [debouncedSearch]);
+  }, [debouncedSearch, statusFilter, userWatchedIds]);
 
   // Merge static secondary sagas with any extra dynamic live search matches
   const allSecondaryItems = useMemo(() => {
@@ -632,49 +647,115 @@ export default function SagasPage() {
         {allSecondaryItems.length > 0 ? (
           <>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3.5 sm:gap-4">
-              {displayedSecondaryItems.map((col) => (
-                <div
-                  key={col.id}
-                  onClick={() => handleOpenSaga(col.id)}
-                  className="group relative flex flex-col rounded-2xl overflow-hidden bg-[#12111d] border border-white/10 hover:border-purple-500/40 hover:shadow-xl hover:shadow-purple-950/20 hover:-translate-y-1 transition-all duration-300 cursor-pointer"
-                >
-                  {/* Poster Container */}
-                  <div className="relative aspect-[2/3] w-full overflow-hidden bg-zinc-900">
-                    <img
-                      src={getImageUrl(col.poster_path, "w500")}
-                      alt={col.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 filter brightness-95 group-hover:brightness-105"
-                      loading="lazy"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#12111d] via-transparent to-transparent opacity-90" />
+              {displayedSecondaryItems.map((col) => {
+                const partIds: number[] = (col as any).partIds || [];
+                const total = partIds.length > 0 ? partIds.length : ((col as any).totalMovies || 1);
+                const watched = partIds.filter((id) => userWatchedIds.has(id)).length;
+                const percent = total > 0 ? Math.round((watched / total) * 100) : 0;
+                const isCompleted = total > 0 && watched === total;
 
-                    {/* Mini Badge */}
-                    <div className="absolute top-2 left-2 pointer-events-none">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-black/75 backdrop-blur-md border border-white/15 text-zinc-300 shadow">
-                        Colección
-                      </span>
+                return (
+                  <div
+                    key={col.id}
+                    onClick={() => handleOpenSaga(col.id)}
+                    className={`group relative flex flex-col rounded-2xl overflow-hidden border transition-all duration-300 cursor-pointer shadow-md hover:shadow-xl hover:-translate-y-1 ${
+                      isCompleted
+                        ? "bg-[#141220] border-amber-500/40 hover:border-amber-400 shadow-amber-950/20"
+                        : watched > 0
+                        ? "bg-[#13111f] border-purple-500/30 hover:border-purple-400/60 shadow-purple-950/20"
+                        : "bg-[#12111d] border-white/10 hover:border-purple-500/40 hover:shadow-purple-950/20"
+                    }`}
+                  >
+                    {/* Poster Container */}
+                    <div className="relative aspect-[2/3] w-full overflow-hidden bg-zinc-900">
+                      <img
+                        src={getImageUrl(col.poster_path, "w500")}
+                        alt={col.name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 filter brightness-95 group-hover:brightness-105"
+                        loading="lazy"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-[#12111d] via-transparent to-transparent opacity-90" />
+
+                      {/* Mini Badge */}
+                      <div className="absolute top-2 left-2 pointer-events-none">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-black/75 backdrop-blur-md border border-white/15 text-zinc-300 shadow">
+                          Colección
+                        </span>
+                      </div>
+
+                      {/* Completion Ribbon */}
+                      {isCompleted && (
+                        <div className="absolute top-2 right-2 pointer-events-none flex items-center gap-1 px-2 py-0.5 rounded-md bg-gradient-to-r from-amber-400 to-yellow-500 text-black text-[10px] font-black shadow-lg shadow-amber-500/40">
+                          <Trophy className="w-3 h-3" />
+                          <span>100%</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Card Info & Progress */}
+                    <div className="p-3 flex-1 flex flex-col justify-between space-y-2.5">
+                      <div>
+                        <h4 className="font-bold text-xs sm:text-sm text-white group-hover:text-purple-400 transition-colors line-clamp-2 leading-snug">
+                          {col.name}
+                        </h4>
+                        {(col as any).yearRange && (
+                          <span className="text-[10px] text-zinc-500 mt-0.5 block">
+                            {(col as any).yearRange}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Progress bar & Percent */}
+                      <div className="space-y-1.5 pt-1.5 border-t border-white/5">
+                        <div className="w-full h-1.5 rounded-full bg-zinc-800/80 overflow-hidden border border-white/5">
+                          <div
+                            className={`h-full transition-all duration-500 rounded-full ${
+                              isCompleted
+                                ? "bg-gradient-to-r from-amber-400 to-yellow-500"
+                                : watched > 0
+                                ? "bg-gradient-to-r from-purple-500 to-indigo-500"
+                                : "bg-transparent"
+                            }`}
+                            style={{ width: `${percent}%` }}
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span
+                            className={`font-semibold ${
+                              isCompleted
+                                ? "text-amber-400 font-bold"
+                                : watched > 0
+                                ? "text-purple-400 font-semibold"
+                                : "text-zinc-500"
+                            }`}
+                          >
+                            {watched > 0 ? `${watched} de ${total} vistas` : `${total} películas`}
+                          </span>
+                          <span
+                            className={`font-bold ${
+                              isCompleted
+                                ? "text-amber-400"
+                                : watched > 0
+                                ? "text-purple-300"
+                                : "text-zinc-500"
+                            }`}
+                          >
+                            {percent}%
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   </div>
-
-                  {/* Card Info */}
-                  <div className="p-3 flex-1 flex flex-col justify-between">
-                    <h4 className="font-bold text-xs sm:text-sm text-white group-hover:text-purple-400 transition-colors line-clamp-2 leading-snug">
-                      {col.name}
-                    </h4>
-                    <div className="mt-2 pt-2 border-t border-white/5 flex items-center justify-between text-[11px] text-zinc-500">
-                      <span>Ver títulos</span>
-                      <ChevronRight className="w-3.5 h-3.5 text-zinc-500 group-hover:text-white group-hover:translate-x-0.5 transition" />
-                    </div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Pagination / Expand button */}
             {!debouncedSearch && allSecondaryItems.length > visibleSecondaryCount && (
               <div className="text-center pt-2">
                 <button
-                  onClick={() => setVisibleSecondaryCount((prev) => prev + 24)}
+                  onClick={() => setVisibleSecondaryCount((prev) => prev + 36)}
                   className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs sm:text-sm font-semibold text-zinc-300 hover:text-white transition active:scale-95 cursor-pointer shadow-sm"
                 >
                   Cargar más colecciones ({allSecondaryItems.length - visibleSecondaryCount} restantes)

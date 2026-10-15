@@ -14,7 +14,8 @@ import {
   ArrowLeft,
   Tv,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  Pencil
 } from "lucide-react";
 import { useApp } from "@/lib/context/AppContext";
 import { useAuth } from "@/lib/context/AuthContext";
@@ -27,6 +28,7 @@ import {
 import { 
   performQuickLog, 
   getExistingUserLog,
+  getAllUserMovieLogs,
   POPULAR_PLATFORMS, 
   getLastUsedPlatform, 
   setLastUsedPlatform 
@@ -56,6 +58,8 @@ export function QuickLogModal() {
   // Selected movie for quick logging
   const [selectedMovie, setSelectedMovie] = useState<any | null>(null);
   const [existingLog, setExistingLog] = useState<Log | null>(null);
+  const [allLogs, setAllLogs] = useState<Log[]>([]);
+  const [logMode, setLogMode] = useState<"rewatch" | "edit">("rewatch");
 
   // Form state
   const [rating, setRating] = useState<number>(7.0);
@@ -88,6 +92,8 @@ export function QuickLogModal() {
       setIsRewatch(false);
       setSavedSuccess(false);
       setExistingLog(null);
+      setAllLogs([]);
+      setLogMode("rewatch");
       setErrorMsg(null);
       setSearchQuery("");
       setSearchResults([]);
@@ -102,37 +108,30 @@ export function QuickLogModal() {
     }
   }, [isQuickLogOpen, quickLogMovie]);
 
-  // When selectedMovie changes, detect if user already logged it
+  // When selectedMovie changes, detect all user logs
   useEffect(() => {
     if (!selectedMovie) {
       setExistingLog(null);
+      setAllLogs([]);
+      setLogMode("rewatch");
       return;
     }
 
-    getExistingUserLog(selectedMovie.id, user?.id, Boolean(isGuest || !user)).then((found) => {
-      if (found) {
-        setExistingLog(found);
-        if (typeof found.rating === "number") setRating(found.rating);
-        if (found.platform) setPlatform(found.platform);
-        if (typeof found.is_rewatch === "boolean") setIsRewatch(found.is_rewatch);
-        if (!found.watched_at) {
-          setDateOption("none");
-        } else {
-          const todayStr = new Date().toISOString().split("T")[0];
-          const yesterdayDate = new Date();
-          yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-          const yesterdayStr = yesterdayDate.toISOString().split("T")[0];
-          if (found.watched_at === todayStr) {
-            setDateOption("today");
-          } else if (found.watched_at === yesterdayStr) {
-            setDateOption("yesterday");
-          } else {
-            setDateOption("custom");
-            setCustomDate(found.watched_at);
-          }
-        }
+    getAllUserMovieLogs(selectedMovie.id, user?.id, Boolean(isGuest || !user)).then((logs) => {
+      if (logs && logs.length > 0) {
+        setAllLogs(logs);
+        setExistingLog(logs[0]);
+        // Default to new rewatch with today's date
+        setLogMode("rewatch");
+        setIsRewatch(true);
+        setDateOption("today");
+        if (typeof logs[0].rating === "number") setRating(logs[0].rating);
+        if (logs[0].platform) setPlatform(logs[0].platform);
       } else {
+        setAllLogs([]);
         setExistingLog(null);
+        setLogMode("rewatch");
+        setIsRewatch(false);
       }
     });
   }, [selectedMovie, user, isGuest]);
@@ -215,14 +214,17 @@ export function QuickLogModal() {
 
     const watchedAt = getComputedWatchedAt();
 
+    const isRewatchMode = logMode === "rewatch" && (allLogs.length > 0 || existingLog !== null);
+
     try {
       const result = await performQuickLog({
         movie: selectedMovie,
         rating,
         watchedAt,
         platform,
-        isRewatch,
-        existingLogId: existingLog?.id || null,
+        isRewatch: isRewatchMode || isRewatch,
+        existingLogId: isRewatchMode ? null : (existingLog?.id || null),
+        createNewRewatch: isRewatchMode,
         user,
         isGuest: Boolean(isGuest || !user),
         triggerConfetti,
@@ -235,6 +237,11 @@ export function QuickLogModal() {
 
       if (result.log) {
         setExistingLog(result.log);
+        setAllLogs((prev) =>
+          isRewatchMode
+            ? [result.log!, ...prev]
+            : prev.map((l) => (l.id === result.log!.id ? result.log! : l))
+        );
       }
 
       setSavedSuccess(true);
@@ -252,6 +259,8 @@ export function QuickLogModal() {
   const handleLogAnother = () => {
     setSelectedMovie(null);
     setExistingLog(null);
+    setAllLogs([]);
+    setLogMode("rewatch");
     setSavedSuccess(false);
     setSearchQuery("");
     setSearchResults([]);
@@ -265,7 +274,7 @@ export function QuickLogModal() {
     const movieToLog = selectedMovie;
     const currentEditLog = existingLog;
     closeQuickLogModal();
-    openLogModal(movieToLog, currentEditLog || undefined);
+    openLogModal(movieToLog, logMode === "edit" ? (currentEditLog || undefined) : undefined);
   };
 
   const getRatingLabel = (val: number): { text: string; color: string } => {
@@ -435,17 +444,65 @@ export function QuickLogModal() {
                     </button>
                   </div>
 
-                  {/* Existing log notice */}
-                  {existingLog && (
-                    <div className="p-2.5 rounded-xl bg-blue-950/40 border border-blue-500/30 text-xs text-blue-200 flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-blue-400 font-bold">✓ Registro previo:</span>
-                        <span>
-                          {existingLog.rating ? `${existingLog.rating}★` : "Sin nota"} • {existingLog.platform || "Sin plataforma"} •{" "}
-                          {existingLog.watched_at || "Sin fecha"}
-                        </span>
+                  {/* Existing log notice / Rewatch Selector */}
+                  {(existingLog || allLogs.length > 0) && (
+                    <div className="p-3 rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-purple-500/10 border border-amber-500/30 space-y-2 animate-in fade-in">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            {allLogs.length > 1 ? `Vista ${allLogs.length} veces` : "Ya registrada"}
+                          </span>
+                          <span className="text-xs font-bold text-white">
+                            {logMode === "rewatch" ? "Nuevo Rewatch (Nueva fecha)" : "Editar anterior"}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1 p-0.5 bg-black/50 rounded-xl border border-white/10 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLogMode("rewatch");
+                              setIsRewatch(true);
+                              setDateOption("today");
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                              logMode === "rewatch"
+                                ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm"
+                                : "text-zinc-400 hover:text-white"
+                            }`}
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            <span>+ Rewatch</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLogMode("edit");
+                              if (existingLog) {
+                                if (typeof existingLog.rating === "number") setRating(existingLog.rating);
+                                if (existingLog.watched_at) {
+                                  setDateOption("custom");
+                                  setCustomDate(existingLog.watched_at);
+                                }
+                              }
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition flex items-center gap-1 cursor-pointer ${
+                              logMode === "edit"
+                                ? "bg-white/15 text-white border border-white/10"
+                                : "text-zinc-400 hover:text-white"
+                            }`}
+                          >
+                            <Pencil className="w-3 h-3" />
+                            <span>Editar anterior</span>
+                          </button>
+                        </div>
                       </div>
-                      <span className="text-[10px] text-blue-400/80 font-mono">No se duplicará</span>
+
+                      <p className="text-[11px] text-zinc-300">
+                        {logMode === "rewatch"
+                          ? "Se guardará con la nueva fecha en tu diario y sumará tiempo a tus estadísticas sin borrar la fecha anterior."
+                          : `Modificando la visualización del ${existingLog?.watched_at || "sin fecha"}.`}
+                      </p>
                     </div>
                   )}
 
@@ -657,11 +714,16 @@ export function QuickLogModal() {
                       {saving ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>{existingLog ? "Actualizando registro..." : "Guardando al instante..."}</span>
+                          <span>{logMode === "rewatch" && (existingLog || allLogs.length > 0) ? "Guardando nuevo rewatch..." : existingLog ? "Actualizando registro..." : "Guardando al instante..."}</span>
                         </>
                       ) : (
                         <>
-                          {existingLog ? (
+                          {logMode === "rewatch" && (existingLog || allLogs.length > 0) ? (
+                            <>
+                              <RotateCcw className="w-4 h-4" />
+                              <span>Guardar nuevo Rewatch (+1 vista) ⚡</span>
+                            </>
+                          ) : existingLog ? (
                             <>
                               <Check className="w-4 h-4" />
                               <span>Guardar Cambios (Actualizar Registro) ⚡</span>

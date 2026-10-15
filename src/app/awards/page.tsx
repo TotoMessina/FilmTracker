@@ -1,1410 +1,1195 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Trophy,
   Award,
-  CheckCircle,
-  Circle,
-  Plus,
-  Sparkles,
-  ExternalLink,
-  Star,
-  Film,
   Calendar,
-  Share2,
-  Copy,
+  Search,
+  Sparkles,
   Check,
-  Users,
-  Medal,
-  TrendingUp,
-  Flame,
-  X,
+  CheckCircle2,
+  Film,
+  ExternalLink,
   ChevronRight,
-  Info,
-  Save,
-  Clock,
+  ChevronLeft,
+  X,
+  Eye,
+  Bookmark,
+  Crown,
+  Clapperboard,
+  Layers,
+  Filter,
+  Medal,
+  RefreshCw,
+  Clock
 } from "lucide-react";
 import { useAuth } from "@/lib/context/AuthContext";
 import { useApp } from "@/lib/context/AppContext";
-import { supabase } from "@/lib/supabase/client";
-import { fetchAllUserLogs, fetchAllUserWatchlist } from "@/lib/services/logs";
-import { getMovieDetails, getImageUrl, TMDBMovie } from "@/lib/tmdb/client";
-import AICoach from "@/components/awards/AICoach";
-import { AwardsPrediction } from "@/lib/supabase/types";
+import { fetchAllUserLogs } from "@/lib/services/logs";
+import { getImageUrl } from "@/lib/tmdb/client";
 import {
-  getUserAwardsPrediction,
-  saveUserAwardsPrediction,
-  calculatePredictionScore,
-  getSeasonLeaderboard,
-  ScoreBreakdown,
-  LeaderboardEntry,
-} from "@/lib/services/awardsPredictions";
+  fetchOscarsSummary,
+  fetchOscarEdition,
+  fetchOscarCategoryHistory,
+  searchOscars,
+  resolveFilmPoster,
+  OscarCategory,
+  OscarEditionSummary,
+  OscarEditionDetail,
+  OscarWinnerHistoryItem,
+  OscarAwardCategoryGroup,
+  OscarNomineeItem
+} from "@/lib/services/oscars";
 
-interface Nominee {
-  tmdb_id: number;
-  title: string;
-  nominationDetails?: string;
-  isWinner?: boolean;
-}
+type ViewMode = "by_year" | "by_category" | "search";
 
-interface AwardCategory {
-  name: string;
-  nominees: Nominee[];
-}
+/**
+ * Reusable dynamic poster component with automatic on-demand TMDB resolution
+ */
+function FilmPoster({
+  film,
+  filmId,
+  initialPoster,
+  size = "large",
+  className = ""
+}: {
+  film: string;
+  filmId?: string;
+  initialPoster?: string | null;
+  size?: "large" | "medium" | "small";
+  className?: string;
+}) {
+  const [posterPath, setPosterPath] = useState<string | null>(initialPoster || null);
+  const [loading, setLoading] = useState(false);
 
-interface SeasonEdition {
-  year: number;
-  edition: string;
-  title: string;
-  description: string;
-  categories: AwardCategory[];
-}
-
-const OSCARS_EDITIONS: Record<number, SeasonEdition> = {
-  2026: {
-    year: 2026,
-    edition: "98ª Edición",
-    title: "Temporada de Premios 2026",
-    description: "Monitorea tu progreso antes de la gran noche del cine y pronostica a tus favoritos en la Quiniela Oficial.",
-    categories: [
-      {
-        name: "Mejor Película",
-        nominees: [
-          { tmdb_id: 1054867, title: "One Battle After Another", nominationDetails: "Paul Thomas Anderson" },
-          { tmdb_id: 1233413, title: "Sinners", nominationDetails: "Ryan Coogler" },
-          { tmdb_id: 858024, title: "Hamnet", nominationDetails: "Chloé Zhao" },
-          { tmdb_id: 1062722, title: "Frankenstein", nominationDetails: "Guillermo del Toro" },
-          { tmdb_id: 701387, title: "Bugonia", nominationDetails: "Yorgos Lanthimos" },
-          { tmdb_id: 911430, title: "F1", nominationDetails: "Joseph Kosinski" },
-          { tmdb_id: 1317288, title: "Marty Supreme", nominationDetails: "Josh Safdie" },
-          { tmdb_id: 1220564, title: "The Secret Agent", nominationDetails: "Kleber Mendonça Filho" },
-          { tmdb_id: 1124566, title: "Sentimental Value", nominationDetails: "Joachim Trier" },
-          { tmdb_id: 1078605, title: "Weapons", nominationDetails: "Zach Cregger" },
-        ],
-      },
-      {
-        name: "Mejor Dirección",
-        nominees: [
-          { tmdb_id: 1054867, title: "Paul Thomas Anderson", nominationDetails: "One Battle After Another" },
-          { tmdb_id: 1233413, title: "Ryan Coogler", nominationDetails: "Sinners" },
-          { tmdb_id: 858024, title: "Chloé Zhao", nominationDetails: "Hamnet" },
-          { tmdb_id: 1062722, title: "Guillermo del Toro", nominationDetails: "Frankenstein" },
-          { tmdb_id: 701387, title: "Yorgos Lanthimos", nominationDetails: "Bugonia" },
-        ],
-      },
-      {
-        name: "Mejor Película Animada",
-        nominees: [
-          { tmdb_id: 1022787, title: "Elio", nominationDetails: "Pixar Animation Studios" },
-          { tmdb_id: 1084242, title: "Zootopia 2", nominationDetails: "Walt Disney Animation Studios" },
-          { tmdb_id: 1175942, title: "The Bad Guys 2", nominationDetails: "DreamWorks Animation" },
-          { tmdb_id: 774370, title: "Dog Man", nominationDetails: "Universal Pictures / DreamWorks" },
-        ],
-      },
-      {
-        name: "Mejor Guion Original",
-        nominees: [
-          { tmdb_id: 1233413, title: "Sinners", nominationDetails: "Ryan Coogler" },
-          { tmdb_id: 1078605, title: "Weapons", nominationDetails: "Zach Cregger" },
-          { tmdb_id: 1124566, title: "Sentimental Value", nominationDetails: "Eskil Vogt, Joachim Trier" },
-          { tmdb_id: 1220564, title: "The Secret Agent", nominationDetails: "Kleber Mendonça Filho" },
-          { tmdb_id: 701387, title: "Bugonia", nominationDetails: "Will Tracy" },
-        ],
-      },
-    ],
-  },
-  2025: {
-    year: 2025,
-    edition: "97ª Edición",
-    title: "Oscars 2025",
-    description: "Revive las grandes nominadas y ganadoras de las películas estrenadas en 2024.",
-    categories: [
-      {
-        name: "Mejor Película",
-        nominees: [
-          { tmdb_id: 1064213, title: "Anora", nominationDetails: "Sean Baker", isWinner: true },
-          { tmdb_id: 1276843, title: "The Brutalist", nominationDetails: "Brady Corbet" },
-          { tmdb_id: 974576, title: "Conclave", nominationDetails: "Edward Berger" },
-          { tmdb_id: 1241982, title: "Emilia Pérez", nominationDetails: "Jacques Audiard" },
-          { tmdb_id: 1119494, title: "The Substance", nominationDetails: "Coralie Fargeat" },
-          { tmdb_id: 1152748, title: "Wicked", nominationDetails: "Jon M. Chu" },
-          { tmdb_id: 1225916, title: "A Complete Unknown", nominationDetails: "James Mangold" },
-          { tmdb_id: 1028196, title: "Nickel Boys", nominationDetails: "RaMell Ross" },
-          { tmdb_id: 693134, title: "Dune: Part Two", nominationDetails: "Denis Villeneuve" },
-          { tmdb_id: 1156593, title: "I'm Still Here", nominationDetails: "Walter Salles" },
-        ],
-      },
-      {
-        name: "Mejor Dirección",
-        nominees: [
-          { tmdb_id: 1064213, title: "Sean Baker", nominationDetails: "Anora", isWinner: true },
-          { tmdb_id: 1276843, title: "Brady Corbet", nominationDetails: "The Brutalist" },
-          { tmdb_id: 1241982, title: "Jacques Audiard", nominationDetails: "Emilia Pérez" },
-          { tmdb_id: 1119494, title: "Coralie Fargeat", nominationDetails: "The Substance" },
-          { tmdb_id: 1225916, title: "James Mangold", nominationDetails: "A Complete Unknown" },
-        ],
-      },
-      {
-        name: "Mejor Película Animada",
-        nominees: [
-          { tmdb_id: 823219, title: "Flow", nominationDetails: "Gints Zilbalodis", isWinner: true },
-          { tmdb_id: 1029575, title: "The Wild Robot", nominationDetails: "DreamWorks Animation" },
-          { tmdb_id: 1195506, title: "Inside Out 2", nominationDetails: "Pixar Animation" },
-          { tmdb_id: 1064486, title: "Memoir of a Snail", nominationDetails: "Adam Elliot" },
-          { tmdb_id: 762441, title: "Wallace & Gromit: Vengeance Most Fowl", nominationDetails: "Aardman" },
-        ],
-      },
-      {
-        name: "Mejor Película Internacional",
-        nominees: [
-          { tmdb_id: 1156593, title: "I'm Still Here", nominationDetails: "Brasil", isWinner: true },
-          { tmdb_id: 1241982, title: "Emilia Pérez", nominationDetails: "Francia" },
-          { tmdb_id: 823219, title: "Flow", nominationDetails: "Letonia" },
-          { tmdb_id: 1208668, title: "The Girl With the Needle", nominationDetails: "Dinamarca/Polonia" },
-          { tmdb_id: 1278263, title: "The Seed of the Sacred Fig", nominationDetails: "Alemania" },
-        ],
-      },
-      {
-        name: "Mejor Guion Original",
-        nominees: [
-          { tmdb_id: 1064213, title: "Anora", nominationDetails: "Sean Baker", isWinner: true },
-          { tmdb_id: 1197306, title: "A Real Pain", nominationDetails: "Jesse Eisenberg" },
-          { tmdb_id: 1241982, title: "Emilia Pérez", nominationDetails: "Jacques Audiard" },
-          { tmdb_id: 1111873, title: "September 5", nominationDetails: "Moritz Binder, Tim Fehlbaum" },
-          { tmdb_id: 1119494, title: "The Substance", nominationDetails: "Coralie Fargeat" },
-        ],
-      },
-    ],
-  },
-  2024: {
-    year: 2024,
-    edition: "96ª Edición",
-    title: "Oscars 2024",
-    description: "Revive las grandes nominadas y ganadoras de las películas estrenadas en 2023.",
-    categories: [
-      {
-        name: "Mejor Película",
-        nominees: [
-          { tmdb_id: 872585, title: "Oppenheimer", nominationDetails: "Christopher Nolan", isWinner: true },
-          { tmdb_id: 792307, title: "Poor Things", nominationDetails: "Yorgos Lanthimos" },
-          { tmdb_id: 466420, title: "Killers of the Flower Moon", nominationDetails: "Martin Scorsese" },
-          { tmdb_id: 915935, title: "Anatomy of a Fall", nominationDetails: "Justine Triet" },
-          { tmdb_id: 93562, title: "The Zone of Interest", nominationDetails: "Jonathan Glazer" },
-          { tmdb_id: 346698, title: "Barbie", nominationDetails: "Greta Gerwig" },
-          { tmdb_id: 840430, title: "The Holdovers", nominationDetails: "Alexander Payne" },
-          { tmdb_id: 666277, title: "Past Lives", nominationDetails: "Celine Song" },
-        ],
-      },
-      {
-        name: "Mejor Dirección",
-        nominees: [
-          { tmdb_id: 872585, title: "Christopher Nolan", nominationDetails: "Oppenheimer", isWinner: true },
-          { tmdb_id: 792307, title: "Yorgos Lanthimos", nominationDetails: "Poor Things" },
-          { tmdb_id: 466420, title: "Martin Scorsese", nominationDetails: "Killers of the Flower Moon" },
-          { tmdb_id: 915935, title: "Justine Triet", nominationDetails: "Anatomy of a Fall" },
-          { tmdb_id: 93562, title: "Jonathan Glazer", nominationDetails: "The Zone of Interest" },
-        ],
-      },
-      {
-        name: "Mejor Película Animada",
-        nominees: [
-          { tmdb_id: 508883, title: "The Boy and the Heron", nominationDetails: "Hayao Miyazaki", isWinner: true },
-          { tmdb_id: 569094, title: "Spider-Man: Across the Spider-Verse", nominationDetails: "Sony Pictures Animation" },
-          { tmdb_id: 940551, title: "Migration", nominationDetails: "Illumination" },
-          { tmdb_id: 745376, title: "Elemental", nominationDetails: "Pixar" },
-          { tmdb_id: 969681, title: "Robot Dreams", nominationDetails: "Pablo Berger" },
-        ],
-      },
-      {
-        name: "Mejor Película Internacional",
-        nominees: [
-          { tmdb_id: 93562, title: "The Zone of Interest", nominationDetails: "Reino Unido", isWinner: true },
-          { tmdb_id: 976893, title: "Perfect Days", nominationDetails: "Japón" },
-          { tmdb_id: 852096, title: "Society of the Snow", nominationDetails: "España" },
-          { tmdb_id: 1034587, title: "Io Capitano", nominationDetails: "Italia" },
-          { tmdb_id: 998846, title: "The Teachers' Lounge", nominationDetails: "Alemania" },
-        ],
-      },
-    ],
-  },
-};
-
-type AwardsTab = "tracker" | "prode" | "leaderboard";
-
-export default function AwardsPage() {
-  const { user, profile, isGuest } = useAuth();
-  const { openLogModal, triggerConfetti } = useApp();
-
-  const [activeTab, setActiveTab] = useState<AwardsTab>("tracker");
-  const [selectedYear, setSelectedYear] = useState<number>(2026);
-  const [watchedTmdbIds, setWatchedTmdbIds] = useState<Set<number>>(new Set());
-  const [watchlistTitles, setWatchlistTitles] = useState<string[]>([]);
-  const [movieDetails, setMovieDetails] = useState<Record<number, Partial<TMDBMovie>>>({});
-  const [loading, setLoading] = useState(true);
-
-  // Prode / Quiniela State
-  const [userPredictions, setUserPredictions] = useState<Record<string, number>>({});
-  const [savedPrediction, setSavedPrediction] = useState<AwardsPrediction | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [saveSuccessMsg, setSaveSuccessMsg] = useState(false);
-
-  // Leaderboard State
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
-  const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
-
-  // Share Card Modal State
-  const [showShareModal, setShowShareModal] = useState(false);
-  const [copiedText, setCopiedText] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
-
-  const activeSeason = OSCARS_EDITIONS[selectedYear] || OSCARS_EDITIONS[2026];
-
-  const currentUserId = user?.id || (isGuest ? "guest-user-123" : "guest-user-123");
-  const currentUsername = profile?.username || (isGuest ? "Invitado Cinéfilo" : "Mi Usuario");
-
-  // Read URL query params on mount if specified
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const yearParam = params.get("year");
-      const tabParam = params.get("tab");
-      if (yearParam && (yearParam === "2026" || yearParam === "2025" || yearParam === "2024")) {
-        setSelectedYear(parseInt(yearParam, 10));
-      }
-      if (tabParam === "prode" || tabParam === "leaderboard" || tabParam === "tracker") {
-        setActiveTab(tabParam as AwardsTab);
-      }
+    if (initialPoster) {
+      setPosterPath(initialPoster);
+      return;
     }
-  }, []);
-
-  // 1. Load user logs to know which movies are already watched
-  useEffect(() => {
-    async function loadWatchedIds() {
+    let isCancelled = false;
+    async function loadPoster() {
       setLoading(true);
       try {
-        if (user) {
-          const [logsData, wlData] = await Promise.all([
-            fetchAllUserLogs(user.id, { select: "tmdb_id" }),
-            fetchAllUserWatchlist(user.id, { select: "title, movie:movies(title)" }),
-          ]);
+        const res = await resolveFilmPoster(film, filmId);
+        if (!isCancelled && res.poster_path) {
+          setPosterPath(res.poster_path);
+        }
+      } catch (e) {
+      } finally {
+        if (!isCancelled) setLoading(false);
+      }
+    }
+    loadPoster();
+    return () => {
+      isCancelled = true;
+    };
+  }, [film, filmId, initialPoster]);
 
+  const sizeStyles = {
+    large: "w-28 sm:w-36 aspect-[2/3]",
+    medium: "w-16 sm:w-20 aspect-[2/3]",
+    small: "w-10 sm:w-12 aspect-[2/3]"
+  };
+
+  if (posterPath) {
+    return (
+      <div className={`relative overflow-hidden rounded-xl bg-black/50 border border-white/10 shrink-0 shadow-md ${sizeStyles[size]} ${className}`}>
+        <img
+          src={getImageUrl(posterPath, size === "large" ? "w500" : "w185")}
+          alt={film}
+          className="w-full h-full object-cover transition duration-300 hover:scale-105"
+          loading="lazy"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`relative overflow-hidden rounded-xl bg-gradient-to-br from-white/5 to-white/[0.02] border border-white/10 shrink-0 flex flex-col items-center justify-center p-1 text-center ${sizeStyles[size]} ${className}`}
+      title={film}
+    >
+      <Clapperboard className={`${size === "small" ? "w-4 h-4 text-zinc-600" : "w-6 h-6 text-zinc-500"} mb-1`} />
+      <span className="text-[9px] text-zinc-400 font-bold line-clamp-2 px-1 leading-tight">
+        {film}
+      </span>
+    </div>
+  );
+}
+
+function AwardsContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const { user, isGuest } = useAuth();
+  const { openLogModal } = useApp();
+
+  // Navigation mode
+  const initialMode = (searchParams.get("mode") as ViewMode) || (searchParams.get("category") ? "by_category" : "by_year");
+  const [viewMode, setViewMode] = useState<ViewMode>(initialMode);
+
+  // By Year state
+  const initialYear = searchParams.get("year") ? parseInt(searchParams.get("year")!, 10) : 2026;
+  const [selectedYear, setSelectedYear] = useState<number>(initialYear);
+  const [currentEdition, setCurrentEdition] = useState<OscarEditionDetail | null>(null);
+  const [loadingEdition, setLoadingEdition] = useState(false);
+  const [filterYearCategory, setFilterYearCategory] = useState<string>("all");
+
+  // By Category state
+  const initialCat = searchParams.get("category") || "best_picture";
+  const [selectedCategory, setSelectedCategory] = useState<string>(initialCat);
+  const [categoryHistory, setCategoryHistory] = useState<{
+    category: OscarCategory;
+    winners: OscarWinnerHistoryItem[];
+  } | null>(null);
+  const [loadingCategory, setLoadingCategory] = useState(false);
+  const [categorySearchQuery, setCategorySearchQuery] = useState("");
+
+  // Global Search state
+  const [globalSearchInput, setGlobalSearchInput] = useState("");
+  const [debouncedGlobalSearch, setDebouncedGlobalSearch] = useState("");
+  const [searchResults, setSearchResults] = useState<{
+    matchedEditions: OscarEditionSummary[];
+    matchedWinners: any[];
+    totalMatches: number;
+  } | null>(null);
+  const [searchingGlobal, setSearchingGlobal] = useState(false);
+
+  // Metadata: summaries and categories
+  const [summaryEditions, setSummaryEditions] = useState<OscarEditionSummary[]>([]);
+  const [categoriesList, setCategoriesList] = useState<OscarCategory[]>([]);
+  const [loadingInitial, setLoadingInitial] = useState(true);
+
+  // User Watched Movies tracker
+  const [watchedTmdbIds, setWatchedTmdbIds] = useState<Set<number>>(new Set());
+  const [watchedTitles, setWatchedTitles] = useState<Set<string>>(new Set());
+
+  // Normalize string helper for matching
+  const normalize = (str: string) =>
+    (str || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim();
+
+  // 1. Load User Watched History (from Supabase or Guest LocalStorage)
+  useEffect(() => {
+    async function loadWatchedData() {
+      try {
+        if (user) {
+          const logsData = await fetchAllUserLogs(user.id, { select: "tmdb_id, movie:movies(title)" });
           if (logsData) {
-            setWatchedTmdbIds(new Set(logsData.map((d) => d.tmdb_id)));
-          }
-          if (wlData) {
-            setWatchlistTitles(
-              wlData.map((item: any) => item.title || item.movie?.title).filter(Boolean)
-            );
+            const idSet = new Set<number>();
+            const titleSet = new Set<string>();
+            logsData.forEach((l: any) => {
+              if (l.tmdb_id) idSet.add(l.tmdb_id);
+              if (l.movie?.title) titleSet.add(normalize(l.movie.title));
+            });
+            setWatchedTmdbIds(idSet);
+            setWatchedTitles(titleSet);
           }
         } else if (isGuest) {
           const guestLogs = JSON.parse(localStorage.getItem("filmtracker_guest_logs") || "[]");
-          setWatchedTmdbIds(new Set(guestLogs.map((l: any) => l.tmdb_id)));
-          const guestWl = JSON.parse(localStorage.getItem("filmtracker_guest_watchlist") || "[]");
-          setWatchlistTitles(guestWl.map((w: any) => w.title).filter(Boolean));
+          const idSet = new Set<number>();
+          const titleSet = new Set<string>();
+          guestLogs.forEach((l: any) => {
+            if (l.tmdb_id) idSet.add(l.tmdb_id);
+            if (l.title) titleSet.add(normalize(l.title));
+          });
+          setWatchedTmdbIds(idSet);
+          setWatchedTitles(titleSet);
         }
-      } catch (err) {
-        console.warn("Awards error:", err);
-      } finally {
-        setLoading(false);
+      } catch (e) {
+        console.warn("Error loading user watched logs:", e);
       }
     }
+    loadWatchedData();
 
-    loadWatchedIds();
-
-    const handleLogUpdated = () => {
-      loadWatchedIds();
-    };
+    const handleLogUpdated = () => loadWatchedData();
     window.addEventListener("filmtracker_log_updated", handleLogUpdated);
-    return () => {
-      window.removeEventListener("filmtracker_log_updated", handleLogUpdated);
-    };
+    return () => window.removeEventListener("filmtracker_log_updated", handleLogUpdated);
   }, [user, isGuest]);
 
-  // 2. Fetch live TMDB details (posters, ratings) dynamically
+  // Check if a film has been watched by the user
+  const isMovieWatched = (filmTitle: string, tmdbId?: number | null) => {
+    if (tmdbId && watchedTmdbIds.has(tmdbId)) return true;
+    if (!filmTitle) return false;
+    const clean = normalize(filmTitle.split("|")[0]);
+    if (watchedTitles.has(clean)) return true;
+    return false;
+  };
+
+  // 2. Load Initial Summary of 98 Editions & Categories
   useEffect(() => {
     let isCancelled = false;
-
-    async function fetchNomineesTMDB() {
-      const nomineeIds = new Set<number>();
-      activeSeason.categories.forEach((cat) => {
-        cat.nominees.forEach((n) => nomineeIds.add(n.tmdb_id));
-      });
-
-      const promises = Array.from(nomineeIds).map(async (id) => {
-        if (movieDetails[id]) return null;
-        try {
-          const details = await getMovieDetails(id);
-          return { id, details };
-        } catch {
-          return null;
-        }
-      });
-
-      const results = await Promise.all(promises);
-      if (!isCancelled) {
-        setMovieDetails((prev) => {
-          const next = { ...prev };
-          results.forEach((item) => {
-            if (item) {
-              next[item.id] = item.details;
-            }
-          });
-          return next;
-        });
-      }
-    }
-
-    fetchNomineesTMDB();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [selectedYear]);
-
-  // 3. Load user's predictions & leaderboard for the active season
-  useEffect(() => {
-    let isCancelled = false;
-
-    async function loadPredictionsAndLeaderboard() {
-      setLoadingLeaderboard(true);
+    async function loadInitialData() {
+      setLoadingInitial(true);
       try {
-        const pred = await getUserAwardsPrediction(selectedYear, currentUserId);
+        const data = await fetchOscarsSummary();
         if (!isCancelled) {
-          setSavedPrediction(pred);
-          if (pred && pred.predictions) {
-            setUserPredictions(pred.predictions);
-            setHasUnsavedChanges(false);
-          } else {
-            setUserPredictions({});
-            setHasUnsavedChanges(false);
-          }
-        }
-
-        const lb = await getSeasonLeaderboard(
-          selectedYear,
-          activeSeason.categories,
-          currentUserId,
-          pred
-        );
-        if (!isCancelled) {
-          setLeaderboard(lb);
+          setSummaryEditions(data.editions || []);
+          setCategoriesList(data.categories || []);
         }
       } catch (err) {
-        console.warn("Error loading predictions/leaderboard:", err);
+        console.error("Error loading Oscars summary:", err);
       } finally {
-        if (!isCancelled) {
-          setLoadingLeaderboard(false);
-        }
+        if (!isCancelled) setLoadingInitial(false);
       }
     }
-
-    loadPredictionsAndLeaderboard();
-
+    loadInitialData();
     return () => {
       isCancelled = true;
     };
-  }, [selectedYear, currentUserId]);
+  }, []);
 
-  // Calculate score breakdown for current predictions
-  const scoreBreakdown: ScoreBreakdown = calculatePredictionScore(
-    userPredictions,
-    activeSeason.categories
-  );
-
-  // Category counts
-  const totalCategories = activeSeason.categories.length;
-  const predictedCategoriesCount = Object.keys(userPredictions).length;
-  const isAllCategoriesPredicted = predictedCategoriesCount === totalCategories;
-
-  // Track unique nominees seen for the active season
-  const allNomineeIds = new Set<number>();
-  activeSeason.categories.forEach((cat) => {
-    cat.nominees.forEach((n) => allNomineeIds.add(n.tmdb_id));
-  });
-  const totalNominees = allNomineeIds.size;
-  const seenNomineesCount = Array.from(allNomineeIds).filter((id) => watchedTmdbIds.has(id)).length;
-  const progressPercent = totalNominees > 0 ? Math.round((seenNomineesCount / totalNominees) * 100) : 0;
-
-  // Handle selecting a winner in a category
-  const handleSelectNominee = (categoryName: string, tmdbId: number) => {
-    setUserPredictions((prev) => {
-      const next = { ...prev };
-      if (next[categoryName] === tmdbId) {
-        // Toggle off if desired, or keep selected
-        delete next[categoryName];
-      } else {
-        next[categoryName] = tmdbId;
+  // 3. Load Specific Year / Edition
+  useEffect(() => {
+    if (viewMode !== "by_year") return;
+    let isCancelled = false;
+    async function loadEdition() {
+      setLoadingEdition(true);
+      try {
+        const data = await fetchOscarEdition(selectedYear);
+        if (!isCancelled && data.edition) {
+          setCurrentEdition(data.edition);
+        }
+      } catch (err) {
+        console.error("Error loading Oscar edition:", err);
+      } finally {
+        if (!isCancelled) setLoadingEdition(false);
       }
-      return next;
-    });
-    setHasUnsavedChanges(true);
-  };
-
-  // Handle saving predictions
-  const handleSavePredictions = async () => {
-    if (Object.keys(userPredictions).length === 0) return;
-    setIsSaving(true);
-    try {
-      const profileData = profile
-        ? {
-            id: profile.id,
-            username: profile.username || currentUsername,
-            avatar_url: profile.avatar_url || null,
-          }
-        : {
-            id: currentUserId,
-            username: currentUsername,
-            avatar_url: null,
-          };
-
-      const saved = await saveUserAwardsPrediction(
-        selectedYear,
-        userPredictions,
-        scoreBreakdown.score,
-        profileData
-      );
-
-      setSavedPrediction(saved);
-      setHasUnsavedChanges(false);
-      setSaveSuccessMsg(true);
-      triggerConfetti();
-
-      // Refresh leaderboard with new score
-      const lb = await getSeasonLeaderboard(
-        selectedYear,
-        activeSeason.categories,
-        currentUserId,
-        saved
-      );
-      setLeaderboard(lb);
-
-      setTimeout(() => setSaveSuccessMsg(false), 3500);
-    } catch (err) {
-      console.error("Error guardando predicciones:", err);
-    } finally {
-      setIsSaving(false);
     }
-  };
+    loadEdition();
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedYear, viewMode]);
 
-  // Copy share text (for WhatsApp / social media)
-  const handleCopyShareText = () => {
-    const lines = [
-      `🏆 Mis Predicciones para los ${activeSeason.title} (${activeSeason.edition}) en FilmTracker:`,
-      "",
-    ];
-
-    activeSeason.categories.forEach((cat) => {
-      const chosenId = userPredictions[cat.name];
-      const nominee = cat.nominees.find((n) => n.tmdb_id === chosenId);
-      if (nominee) {
-        lines.push(`• ${cat.name}: ${nominee.title} 🏆`);
+  // 4. Load Specific Category History (Year-by-Year)
+  useEffect(() => {
+    if (viewMode !== "by_category") return;
+    let isCancelled = false;
+    async function loadCat() {
+      setLoadingCategory(true);
+      try {
+        const data = await fetchOscarCategoryHistory(selectedCategory);
+        if (!isCancelled) {
+          setCategoryHistory(data);
+        }
+      } catch (err) {
+        console.error("Error loading category history:", err);
+      } finally {
+        if (!isCancelled) setLoadingCategory(false);
       }
-    });
+    }
+    loadCat();
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedCategory, viewMode]);
 
-    lines.push("");
-    lines.push("¿Podés superar mis aciertos? Armá tu quiniela en FilmTracker:");
-    lines.push(
-      typeof window !== "undefined"
-        ? `${window.location.origin}/awards?year=${selectedYear}&tab=prode`
-        : "https://filmtracker.app/awards"
+  // Debounce global search
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedGlobalSearch(globalSearchInput);
+    }, 350);
+    return () => clearTimeout(handler);
+  }, [globalSearchInput]);
+
+  // 5. Execute Global Search
+  useEffect(() => {
+    if (!debouncedGlobalSearch.trim()) {
+      setSearchResults(null);
+      return;
+    }
+    let isCancelled = false;
+    async function runSearch() {
+      setSearchingGlobal(true);
+      try {
+        const data = await searchOscars(debouncedGlobalSearch);
+        if (!isCancelled) {
+          setSearchResults(data);
+          setViewMode("search");
+        }
+      } catch (err) {
+        console.error("Search Oscars error:", err);
+      } finally {
+        if (!isCancelled) setSearchingGlobal(false);
+      }
+    }
+    runSearch();
+    return () => {
+      isCancelled = true;
+    };
+  }, [debouncedGlobalSearch]);
+
+  // Navigation handlers
+  const handleSelectYear = (year: number) => {
+    setSelectedYear(year);
+    setViewMode("by_year");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleSelectCategory = (catId: string) => {
+    setSelectedCategory(catId);
+    setViewMode("by_category");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // Next and Previous Year handlers
+  const currentIndex = summaryEditions.findIndex((e) => e.year === selectedYear);
+  const prevEdition = currentIndex > 0 ? summaryEditions[currentIndex - 1] : null;
+  const nextEdition = currentIndex < summaryEditions.length - 1 ? summaryEditions[currentIndex + 1] : null;
+
+  // Filtered categories for selected year
+  const displayedCategories = useMemo(() => {
+    if (!currentEdition) return [];
+    if (filterYearCategory === "all") return currentEdition.categories;
+    return currentEdition.categories.filter((c) => c.categoryId === filterYearCategory);
+  }, [currentEdition, filterYearCategory]);
+
+  // Filtered category history items
+  const filteredCategoryWinners = useMemo(() => {
+    if (!categoryHistory) return [];
+    if (!categorySearchQuery.trim()) return categoryHistory.winners;
+    const q = normalize(categorySearchQuery);
+    return categoryHistory.winners.filter(
+      (w) =>
+        normalize(w.winner?.film).includes(q) ||
+        normalize(w.winner?.name).includes(q) ||
+        String(w.year).includes(q) ||
+        String(w.ceremony) === q ||
+        w.nominees?.some((n) => normalize(n.film).includes(q) || normalize(n.name).includes(q))
     );
+  }, [categoryHistory, categorySearchQuery]);
 
-    navigator.clipboard.writeText(lines.join("\n"));
-    setCopiedText(true);
-    setTimeout(() => setCopiedText(false), 2500);
-  };
-
-  // Copy shareable link
-  const handleCopyShareLink = () => {
-    const url =
-      typeof window !== "undefined"
-        ? `${window.location.origin}/awards?year=${selectedYear}&tab=prode`
-        : "https://filmtracker.app/awards";
-
-    navigator.clipboard.writeText(url);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2500);
-  };
+  // Category Watched Stats
+  const categoryWatchedCount = useMemo(() => {
+    if (!categoryHistory) return 0;
+    return categoryHistory.winners.filter((w) => isMovieWatched(w.winner?.film, w.winner?.tmdb_id)).length;
+  }, [categoryHistory, watchedTmdbIds, watchedTitles]);
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto pb-16">
-      {/* Header */}
-      <div className="text-center space-y-3">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold uppercase tracking-wider">
-          <Trophy className="w-4 h-4 text-amber-400" />
-          <span>
-            {activeSeason.title} • {activeSeason.edition}
-          </span>
-        </div>
-        <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
-          Oscars & Quiniela de Premios
-        </h1>
-        <p className="text-sm text-zinc-400 max-w-lg mx-auto">
-          Monitorea tu progreso, jugá tu quiniela eligiendo a los ganadores y competí en el
-          ranking comunitario con 10 puntos por acierto.
-        </p>
+    <div className="space-y-8 pb-16">
+      {/* Header Banner */}
+      <div className="relative p-6 sm:p-10 rounded-3xl bg-gradient-to-br from-[#1c1810] via-[#141420] to-[#0e0e17] border border-amber-500/25 shadow-2xl overflow-hidden">
+        {/* Decorative background glow */}
+        <div className="absolute -right-20 -top-20 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -left-20 -bottom-20 w-80 h-80 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
 
-        {/* Edition Selector Pills */}
-        <div className="flex items-center justify-center flex-wrap gap-2 pt-2">
-          <button
-            onClick={() => setSelectedYear(2026)}
-            className={`px-4 py-2 rounded-2xl text-xs font-bold transition flex items-center gap-2 ${
-              selectedYear === 2026
-                ? "bg-amber-500 text-black shadow-lg shadow-amber-500/25"
-                : "bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10"
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Oscars 2026 (Actual)</span>
-          </button>
-          <button
-            onClick={() => setSelectedYear(2025)}
-            className={`px-4 py-2 rounded-2xl text-xs font-bold transition flex items-center gap-2 ${
-              selectedYear === 2025
-                ? "bg-amber-500 text-black shadow-lg shadow-amber-500/25"
-                : "bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10"
-            }`}
-          >
-            <Trophy className="w-3.5 h-3.5" />
-            <span>Oscars 2025</span>
-          </button>
-          <button
-            onClick={() => setSelectedYear(2024)}
-            className={`px-4 py-2 rounded-2xl text-xs font-bold transition flex items-center gap-2 ${
-              selectedYear === 2024
-                ? "bg-amber-500 text-black shadow-lg shadow-amber-500/25"
-                : "bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10"
-            }`}
-          >
-            <Award className="w-3.5 h-3.5" />
-            <span>Oscars 2024</span>
-          </button>
-        </div>
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-2 max-w-2xl">
+            <div className="flex items-center gap-2 text-amber-400 font-bold text-xs uppercase tracking-widest">
+              <Trophy className="w-4 h-4 fill-amber-400" />
+              <span>Palmarés Cinematográfico Oficial · Academia de Hollywood</span>
+            </div>
+            <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight flex items-center gap-3">
+              <span>Premios Oscar</span>
+              <span className="px-3 py-1 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs sm:text-sm font-extrabold uppercase tracking-wider">
+                98 Ediciones (1929 – 2026)
+              </span>
+            </h1>
+            <p className="text-sm sm:text-base text-zinc-300 leading-relaxed">
+              Explora las 98 ceremonias de la historia del cine con todos sus premios competitivos.
+              Observa cada película ganadora con su póster y a todas las nominadas que compitieron con ella en esa terna.
+            </p>
+          </div>
 
-        {/* Navigation Tabs Bar */}
-        <div className="pt-4 max-w-md mx-auto">
-          <div className="flex items-center p-1.5 rounded-2xl bg-white/5 border border-white/10 shadow-inner">
-            <button
-              onClick={() => setActiveTab("tracker")}
-              className={`flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 ${
-                activeTab === "tracker"
-                  ? "bg-white/15 text-white shadow-md border border-white/10"
-                  : "text-zinc-400 hover:text-white hover:bg-white/5"
-              }`}
-            >
-              <Film className="w-4 h-4 text-amber-400" />
-              <span>Tracker</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("prode")}
-              className={`flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 relative ${
-                activeTab === "prode"
-                  ? "bg-amber-500 text-black shadow-md shadow-amber-500/20 font-black"
-                  : "text-zinc-400 hover:text-white hover:bg-white/5"
-              }`}
-            >
-              <Trophy className="w-4 h-4" />
-              <span>Mi Quiniela</span>
-              {predictedCategoriesCount > 0 && (
-                <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                    activeTab === "prode"
-                      ? "bg-black text-amber-300"
-                      : "bg-amber-500/20 text-amber-400 border border-amber-500/30"
-                  }`}
-                >
-                  {predictedCategoriesCount}/{totalCategories}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab("leaderboard")}
-              className={`flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 ${
-                activeTab === "leaderboard"
-                  ? "bg-white/15 text-white shadow-md border border-white/10"
-                  : "text-zinc-400 hover:text-white hover:bg-white/5"
-              }`}
-            >
-              <Medal className="w-4 h-4 text-yellow-400" />
-              <span>Ranking</span>
-            </button>
+          {/* Quick Stats Counter */}
+          <div className="flex items-center gap-4 p-4 rounded-2xl bg-black/40 border border-white/10 shrink-0">
+            <div className="text-center px-2">
+              <span className="block text-2xl sm:text-3xl font-black text-amber-400">98</span>
+              <span className="text-[11px] text-zinc-400 uppercase font-bold tracking-wider">Ceremonias</span>
+            </div>
+            <div className="h-10 w-[1px] bg-white/10" />
+            <div className="text-center px-2">
+              <span className="block text-2xl sm:text-3xl font-black text-emerald-400">100%</span>
+              <span className="text-[11px] text-zinc-400 uppercase font-bold tracking-wider">Películas</span>
+            </div>
+            <div className="h-10 w-[1px] bg-white/10" />
+            <div className="text-center px-2">
+              <span className="block text-2xl sm:text-3xl font-black text-purple-400">0</span>
+              <span className="text-[11px] text-zinc-400 uppercase font-bold tracking-wider">Honorarios</span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* ========================================================================= */}
-      {/* TAB 1: TRACKER & PROGRESS */}
-      {/* ========================================================================= */}
-      {activeTab === "tracker" && (
-        <div className="space-y-8 animate-fadeIn">
-          {/* Progress Card */}
-          <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-[#1a1712] via-[#161420] to-[#12111c] border border-amber-500/30 shadow-2xl space-y-4">
+      {/* Global Search Bar */}
+      <div className="relative">
+        <div className="relative flex-1">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-amber-400 pointer-events-none" />
+          <input
+            type="text"
+            value={globalSearchInput}
+            onChange={(e) => {
+              setGlobalSearchInput(e.target.value);
+              if (e.target.value.trim()) setViewMode("search");
+              else if (viewMode === "search") setViewMode("by_year");
+            }}
+            placeholder="Buscar por año (ej. 1994, 2024), película (Oppenheimer, El Padrino), director o actor en los 98 Oscars..."
+            className="w-full pl-12 pr-11 py-3.5 rounded-2xl bg-[#141420] border border-amber-500/20 text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 shadow-xl transition text-sm sm:text-base font-medium"
+          />
+          {globalSearchInput && (
+            <button
+              onClick={() => {
+                setGlobalSearchInput("");
+                setViewMode("by_year");
+              }}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1.5 rounded-full text-zinc-400 hover:text-white hover:bg-white/10 transition"
+              title="Borrar búsqueda"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Main Mode Navigation Tabs */}
+      <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-[#141420] border border-white/5 overflow-x-auto no-scrollbar">
+        <button
+          onClick={() => {
+            setViewMode("by_year");
+            setGlobalSearchInput("");
+          }}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition shrink-0 ${
+            viewMode === "by_year"
+              ? "bg-amber-500 text-black shadow-lg shadow-amber-500/25"
+              : "text-zinc-400 hover:text-white hover:bg-white/5"
+          }`}
+        >
+          <Calendar className="w-4 h-4" />
+          <span>Explorar por Año (1929 – 2026)</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setViewMode("by_category");
+            setGlobalSearchInput("");
+          }}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition shrink-0 ${
+            viewMode === "by_category"
+              ? "bg-amber-500 text-black shadow-lg shadow-amber-500/25"
+              : "text-zinc-400 hover:text-white hover:bg-white/5"
+          }`}
+        >
+          <Award className="w-4 h-4" />
+          <span>Historial por Premio / Categoría</span>
+        </button>
+
+        {globalSearchInput && (
+          <button
+            onClick={() => setViewMode("search")}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition shrink-0 ${
+              viewMode === "search"
+                ? "bg-amber-500 text-black shadow-lg shadow-amber-500/25"
+                : "text-zinc-400 hover:text-white hover:bg-white/5"
+            }`}
+          >
+            <Search className="w-4 h-4" />
+            <span>Resultados de Búsqueda</span>
+          </button>
+        )}
+      </div>
+
+      {/* ======================================================== */}
+      {/* MODE 1: BY YEAR / EDITION (1929 to 2026)                 */}
+      {/* ======================================================== */}
+      {viewMode === "by_year" && (
+        <div className="space-y-6">
+          {/* Year Navigator & Decade Quick Picker */}
+          <div className="p-4 sm:p-6 rounded-3xl bg-[#141420] border border-white/5 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Tu Progreso en {activeSeason.edition}</span>
-                </span>
-                <div className="text-3xl sm:text-4xl font-black text-white mt-1">
-                  {seenNomineesCount} de {totalNominees}{" "}
-                  <span className="text-lg text-zinc-400 font-normal">películas vistas</span>
-                </div>
+              {/* Previous Edition button */}
+              <button
+                disabled={!prevEdition}
+                onClick={() => prevEdition && handleSelectYear(prevEdition.year)}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white/5 border border-white/10 text-zinc-300 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:pointer-events-none transition"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <span>{prevEdition ? `${prevEdition.year} (${prevEdition.editionLabel})` : "Inicio"}</span>
+              </button>
+
+              {/* Central Year Selector Dropdown */}
+              <div className="flex items-center gap-3 justify-center">
+                <span className="text-xs uppercase font-bold text-zinc-400 tracking-wider">Edición:</span>
+                <select
+                  value={selectedYear}
+                  onChange={(e) => handleSelectYear(parseInt(e.target.value, 10))}
+                  className="px-4 py-2.5 rounded-2xl bg-black/60 border border-amber-500/40 text-amber-300 text-sm sm:text-base font-extrabold focus:outline-none focus:border-amber-400 cursor-pointer shadow-inner"
+                >
+                  {summaryEditions.map((ed) => (
+                    <option key={ed.ceremony} value={ed.year} className="bg-[#141420] text-white">
+                      {ed.year} · {ed.editionLabel} {ed.bestPicture ? `(${ed.bestPicture.film})` : ""}
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              <div className="text-4xl font-black text-amber-400">{progressPercent}%</div>
+              {/* Next Edition button */}
+              <button
+                disabled={!nextEdition}
+                onClick={() => nextEdition && handleSelectYear(nextEdition.year)}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white/5 border border-white/10 text-zinc-300 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:pointer-events-none transition"
+              >
+                <span>{nextEdition ? `${nextEdition.year} (${nextEdition.editionLabel})` : "Fin"}</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
 
-            {/* Progress Bar */}
-            <div className="w-full h-3 rounded-full bg-zinc-800 overflow-hidden p-0.5 border border-white/10">
-              <div
-                className="h-full bg-gradient-to-r from-amber-600 via-amber-400 to-yellow-300 rounded-full transition-all duration-700 shadow-lg shadow-amber-500/50"
-                style={{ width: `${progressPercent}%` }}
-              />
+            {/* Quick Decades Navigator Chips */}
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-2 border-t border-white/5">
+              <span className="text-xs text-zinc-500 font-bold uppercase tracking-wider mr-1 shrink-0">Saltar a:</span>
+              {[
+                { label: "2026 (98ª)", year: 2026 },
+                { label: "2024 (96ª)", year: 2024 },
+                { label: "2020s", year: 2020 },
+                { label: "2010s", year: 2010 },
+                { label: "2000s", year: 2000 },
+                { label: "1990s", year: 1994 },
+                { label: "1980s", year: 1984 },
+                { label: "1970s", year: 1974 },
+                { label: "1960s", year: 1964 },
+                { label: "1950s", year: 1954 },
+                { label: "1940s", year: 1944 },
+                { label: "1930s", year: 1934 },
+                { label: "1929 (1ª)", year: 1929 },
+              ].map((pill) => (
+                <button
+                  key={pill.label}
+                  onClick={() => handleSelectYear(pill.year)}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold border transition shrink-0 ${
+                    selectedYear === pill.year
+                      ? "bg-amber-500 text-black border-amber-400 font-bold"
+                      : "bg-white/5 border-white/10 text-zinc-400 hover:text-white hover:bg-white/10"
+                  }`}
+                >
+                  {pill.label}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Categories Grid */}
-          <div className="space-y-6">
-            {activeSeason.categories.map((category) => (
-              <div
-                key={category.name}
-                className="p-6 rounded-3xl bg-[#141420] border border-white/5 space-y-4 shadow-xl"
-              >
-                <div className="flex items-center gap-2">
-                  <Award className="w-5 h-5 text-amber-400" />
-                  <h2 className="text-lg font-bold text-white tracking-tight">{category.name}</h2>
-                </div>
+          {/* Current Year Best Picture Highlight Banner */}
+          {currentEdition?.bestPicture && (
+            <div className="relative p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-amber-950/40 via-[#181826] to-[#141420] border border-amber-500/30 overflow-hidden shadow-2xl">
+              <div className="flex flex-col md:flex-row items-center gap-6">
+                {/* Poster */}
+                <FilmPoster
+                  film={currentEdition.bestPicture.film}
+                  filmId={currentEdition.bestPicture.filmId}
+                  initialPoster={currentEdition.bestPicture.poster_path}
+                  size="large"
+                />
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  {category.nominees.map((nominee) => {
-                    const isSeen = watchedTmdbIds.has(nominee.tmdb_id);
-                    const details = movieDetails[nominee.tmdb_id];
-                    const posterUrl = getImageUrl(details?.poster_path, "w185");
+                {/* Details */}
+                <div className="space-y-3 flex-1 text-center md:text-left">
+                  <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
+                    <span className="px-3 py-1 rounded-full bg-amber-500 text-black text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-amber-500/30">
+                      <Trophy className="w-3.5 h-3.5 fill-black" />
+                      Mejor Película · {currentEdition.year}
+                    </span>
+                    <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-zinc-300 text-xs font-semibold">
+                      {currentEdition.editionLabel} ({currentEdition.yearRaw})
+                    </span>
+                    {isMovieWatched(currentEdition.bestPicture.film, currentEdition.bestPicture.tmdb_id) && (
+                      <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        ¡La viste!
+                      </span>
+                    )}
+                  </div>
 
-                    return (
-                      <div
-                        key={`${category.name}-${nominee.tmdb_id}-${nominee.title}`}
-                        className={`p-3.5 rounded-2xl border transition-all duration-200 flex items-center justify-between gap-3 ${
-                          isSeen
-                            ? "bg-[#181710] border-amber-500/40 shadow-md shadow-amber-950/20"
-                            : "bg-white/5 border-white/5 hover:border-white/15"
-                        }`}
+                  <h2 className="text-2xl sm:text-3xl font-black text-white">
+                    {currentEdition.bestPicture.title_es || currentEdition.bestPicture.film}
+                  </h2>
+
+                  {currentEdition.bestPicture.producer && (
+                    <p className="text-xs sm:text-sm text-zinc-400">
+                      <span className="text-zinc-500 font-semibold">Producción:</span> {currentEdition.bestPicture.producer}
+                    </p>
+                  )}
+
+                  <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 pt-2">
+                    {currentEdition.bestPicture.tmdb_id ? (
+                      <Link
+                        href={`/movie/${currentEdition.bestPicture.tmdb_id}`}
+                        className="px-4 py-2 rounded-xl bg-amber-500 text-black text-xs font-bold hover:bg-amber-400 transition flex items-center gap-1.5 shadow-md"
                       >
-                        <div className="flex items-center gap-3.5 min-w-0">
-                          {/* Movie Poster thumbnail */}
-                          <Link
-                            href={`/movie/${nominee.tmdb_id}`}
-                            className="w-11 h-16 rounded-xl overflow-hidden shrink-0 bg-black/40 border border-white/10 relative group"
-                          >
-                            <img
-                              src={posterUrl}
-                              alt={nominee.title}
-                              className="w-full h-full object-cover group-hover:scale-105 transition"
-                              loading="lazy"
-                            />
-                          </Link>
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Ver Ficha en FilmTracker</span>
+                      </Link>
+                    ) : (
+                      <Link
+                        href={`/search?q=${encodeURIComponent(currentEdition.bestPicture.film)}`}
+                        className="px-4 py-2 rounded-xl bg-amber-500 text-black text-xs font-bold hover:bg-amber-400 transition flex items-center gap-1.5 shadow-md"
+                      >
+                        <Search className="w-3.5 h-3.5" />
+                        <span>Buscar en Catálogo</span>
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
-                          {/* Movie Info */}
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <Link
-                                href={`/movie/${nominee.tmdb_id}`}
-                                className="font-bold text-sm text-white hover:text-amber-400 transition truncate max-w-[200px] block"
-                              >
-                                {nominee.title}
-                              </Link>
-                              {nominee.isWinner && (
-                                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-500 text-black shrink-0">
-                                  🏆 GANADORA
-                                </span>
-                              )}
-                            </div>
+          {/* Controls Bar for this Year */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 rounded-2xl bg-[#141420] border border-white/5">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">Filtrar categoría:</span>
+              <select
+                value={filterYearCategory}
+                onChange={(e) => setFilterYearCategory(e.target.value)}
+                className="px-3 py-1.5 rounded-xl bg-[#191928] border border-white/10 text-white text-xs font-medium focus:outline-none focus:border-amber-400 cursor-pointer"
+              >
+                <option value="all">Todas las categorías ({currentEdition?.categories.length || 0})</option>
+                {categoriesList.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.icon} {cat.nameEs}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <span className="text-xs text-zinc-400 font-medium">
+              Mostrando {displayedCategories.length} categorías competitivas de {selectedYear}
+            </span>
+          </div>
 
-                            {nominee.nominationDetails && (
-                              <span className="text-xs text-zinc-400 block truncate">
-                                {nominee.nominationDetails}
+          {/* Category Cards: Winner prominent + Nominees smaller & dimmed in the same card */}
+          {loadingEdition ? (
+            <div className="text-center py-20 space-y-3">
+              <RefreshCw className="w-8 h-8 text-amber-400 animate-spin mx-auto" />
+              <p className="text-sm text-zinc-400">Cargando premios y nominados de la {selectedYear}...</p>
+            </div>
+          ) : displayedCategories.length > 0 ? (
+            <div className="space-y-6">
+              {displayedCategories.map((group) => {
+                const winnerWatched = isMovieWatched(group.winner?.film || "", group.winner?.tmdb_id);
+                return (
+                  <div
+                    key={group.category}
+                    className="p-5 sm:p-7 rounded-3xl bg-[#141420] border border-white/10 hover:border-amber-500/30 transition shadow-xl space-y-5"
+                  >
+                    {/* Category Title Header */}
+                    <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                      <div className="flex items-center gap-2 text-amber-400 text-sm sm:text-base font-extrabold tracking-wide">
+                        <span className="text-lg">{group.categoryIcon || "🏆"}</span>
+                        <span>{group.categoryEs}</span>
+                      </div>
+                      <span className="text-[11px] font-semibold text-zinc-400 px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10">
+                        {1 + group.nominees.length} candidatas
+                      </span>
+                    </div>
+
+                    {/* Section A: WINNER (Prominent Golden Card) */}
+                    {group.winner && (
+                      <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-[#181826] to-[#141420] border border-amber-500/40 flex flex-col sm:flex-row items-center gap-4 sm:gap-5 shadow-lg shadow-amber-950/20">
+                        {/* Winner Poster */}
+                        <FilmPoster
+                          film={group.winner.film}
+                          filmId={group.winner.filmId}
+                          initialPoster={group.winner.poster_path}
+                          size="medium"
+                        />
+
+                        {/* Winner Details */}
+                        <div className="space-y-1.5 flex-1 text-center sm:text-left">
+                          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                            <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-md shadow-amber-500/25">
+                              <Crown className="w-3 h-3 fill-black" />
+                              Ganadora
+                            </span>
+                            {winnerWatched && (
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3" />
+                                ¡Vista!
                               </span>
                             )}
+                          </div>
 
-                            {details?.vote_average ? (
-                              <span className="text-[11px] text-zinc-400 flex items-center gap-1 mt-0.5">
-                                <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-                                <span>{details.vote_average.toFixed(1)}</span>
+                          <h3 className="text-lg sm:text-xl font-black text-white">
+                            {group.winner.film}
+                          </h3>
+
+                          {group.winner.name && (
+                            <p className="text-xs sm:text-sm font-bold text-amber-300">
+                              {group.winner.name}
+                            </p>
+                          )}
+
+                          {group.winner.detail && (
+                            <p className="text-[11px] sm:text-xs text-zinc-300 line-clamp-2">
+                              {group.winner.detail}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Action on Winner */}
+                        <div className="flex items-center gap-2 shrink-0 pt-2 sm:pt-0">
+                          {group.winner.tmdb_id ? (
+                            <Link
+                              href={`/movie/${group.winner.tmdb_id}`}
+                              className="px-3.5 py-2 rounded-xl bg-amber-500 text-black text-xs font-bold hover:bg-amber-400 transition flex items-center gap-1.5 shadow"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Ver Ficha</span>
+                            </Link>
+                          ) : (
+                            <Link
+                              href={`/search?q=${encodeURIComponent(group.winner.film)}`}
+                              className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition flex items-center gap-1.5"
+                            >
+                              <Search className="w-3.5 h-3.5" />
+                              <span>Buscar</span>
+                            </Link>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Section B: NOMINEES (Smaller & Dimmer / Tone Apagado) */}
+                    {group.nominees.length > 0 && (
+                      <div className="space-y-2 pt-1">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
+                          <Layers className="w-3 h-3 text-zinc-400" />
+                          Películas nominadas que compitieron por este premio ({group.nominees.length}):
+                        </span>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                          {group.nominees.map((nominee, idx) => {
+                            const nomWatched = isMovieWatched(nominee.film, nominee.tmdb_id);
+                            return (
+                              <div
+                                key={`${nominee.film}-${idx}`}
+                                className="p-2.5 rounded-xl bg-white/[0.03] border border-white/5 hover:border-white/20 transition flex items-center gap-3 opacity-80 hover:opacity-100 group"
+                              >
+                                {/* Small Poster */}
+                                <FilmPoster
+                                  film={nominee.film}
+                                  filmId={nominee.filmId}
+                                  initialPoster={nominee.poster_path}
+                                  size="small"
+                                />
+
+                                {/* Info */}
+                                <div className="min-w-0 flex-1 space-y-0.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <h4 className="text-xs font-semibold text-zinc-300 truncate group-hover:text-white transition" title={nominee.film}>
+                                      {nominee.film}
+                                    </h4>
+                                    {nomWatched && (
+                                      <span className="text-emerald-400 shrink-0" title="Película vista">
+                                        <CheckCircle2 className="w-3 h-3" />
+                                      </span>
+                                    )}
+                                  </div>
+                                  {nominee.name && (
+                                    <p className="text-[10px] text-zinc-400 truncate" title={nominee.name}>
+                                      {nominee.name}
+                                    </p>
+                                  )}
+                                  {nominee.detail && (
+                                    <p className="text-[10px] text-zinc-400 truncate" title={nominee.detail}>
+                                      {nominee.detail}
+                                    </p>
+                                  )}
+                                </div>
+
+                                {/* Quick Search link */}
+                                <Link
+                                  href={nominee.tmdb_id ? `/movie/${nominee.tmdb_id}` : `/search?q=${encodeURIComponent(nominee.film)}`}
+                                  className="text-zinc-400 hover:text-white p-1 rounded transition shrink-0"
+                                  title="Ver película"
+                                >
+                                  <ChevronRight className="w-3.5 h-3.5" />
+                                </Link>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-20 bg-[#141420]/50 rounded-3xl border border-white/5 p-8">
+              <Trophy className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
+              <h3 className="text-lg font-bold text-white">No hay premios para este filtro</h3>
+              <p className="text-sm text-zinc-400 mt-1">Prueba cambiando de categoría.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODE 2: BY CATEGORY / AWARD (Year by Year 1929-2026)      */}
+      {/* ======================================================== */}
+      {viewMode === "by_category" && (
+        <div className="space-y-6">
+          {/* Categories Selector Carousel / Chips */}
+          <div className="p-4 sm:p-6 rounded-3xl bg-[#141420] border border-white/5 space-y-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+              <Award className="w-3.5 h-3.5 text-amber-400" />
+              Elige una estatuilla para ver todos sus ganadores y nominadas año por año:
+            </span>
+
+            <div className="flex flex-wrap gap-2">
+              {categoriesList.map((cat) => {
+                const isSelected = selectedCategory === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    onClick={() => handleSelectCategory(cat.id)}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-semibold border transition flex items-center gap-2 ${
+                      isSelected
+                        ? "bg-amber-500 text-black border-amber-400 font-bold shadow-md shadow-amber-500/20"
+                        : "bg-white/5 border-white/10 text-zinc-300 hover:text-white hover:bg-white/10"
+                    }`}
+                  >
+                    <span>{cat.icon}</span>
+                    <span>{cat.nameEs}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Category Banner & Progress Tracker */}
+          {categoryHistory && (
+            <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-amber-950/30 via-[#181826] to-[#141420] border border-amber-500/30 space-y-4 shadow-xl">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-amber-400 text-xs font-bold uppercase tracking-wider">
+                    <span>{categoryHistory.category.icon}</span>
+                    <span>Palmarés Histórico de la Academia</span>
+                  </div>
+                  <h2 className="text-2xl sm:text-3xl font-black text-white">
+                    {categoryHistory.category.nameEs}
+                  </h2>
+                  {categoryHistory.category.description && (
+                    <p className="text-xs sm:text-sm text-zinc-400 max-w-2xl">
+                      {categoryHistory.category.description}
+                    </p>
+                  )}
+                </div>
+
+                {/* Watched Progress in this Category */}
+                <div className="p-4 rounded-2xl bg-black/40 border border-white/10 text-center sm:text-right shrink-0">
+                  <span className="block text-xl sm:text-2xl font-black text-emerald-400">
+                    {categoryWatchedCount} / {categoryHistory.winners.length}
+                  </span>
+                  <span className="text-[11px] text-zinc-400 uppercase font-bold tracking-wider">
+                    Películas ganadoras vistas ({categoryHistory.winners.length ? Math.round((categoryWatchedCount / categoryHistory.winners.length) * 100) : 0}%)
+                  </span>
+                </div>
+              </div>
+
+              {/* Search inside this category */}
+              <div className="pt-2">
+                <div className="relative max-w-md">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={categorySearchQuery}
+                    onChange={(e) => setCategorySearchQuery(e.target.value)}
+                    placeholder={`Filtrar ganadores o nominadas de ${categoryHistory.category.nameEs}...`}
+                    className="w-full pl-10 pr-9 py-2 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 text-xs sm:text-sm focus:outline-none focus:border-amber-400"
+                  />
+                  {categorySearchQuery && (
+                    <button
+                      onClick={() => setCategorySearchQuery("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Chronological Year-by-Year Winners Timeline with Nominees */}
+          {loadingCategory ? (
+            <div className="text-center py-20 space-y-3">
+              <RefreshCw className="w-8 h-8 text-amber-400 animate-spin mx-auto" />
+              <p className="text-sm text-zinc-400">Cargando ganadores históricos y nominadas...</p>
+            </div>
+          ) : filteredCategoryWinners.length > 0 ? (
+            <div className="space-y-4">
+              {filteredCategoryWinners.map((entry, idx) => {
+                const watched = isMovieWatched(entry.winner?.film || "", entry.winner?.tmdb_id);
+                return (
+                  <div
+                    key={`${entry.ceremony}-${entry.winner?.film}-${idx}`}
+                    className="p-5 sm:p-6 rounded-3xl bg-[#141420] border border-white/10 hover:border-amber-500/30 transition space-y-4 shadow-lg group"
+                  >
+                    {/* Top Row: Year, Winner Poster & Info */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                        {/* Year Badge */}
+                        <button
+                          onClick={() => handleSelectYear(entry.year)}
+                          className="px-3.5 py-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 hover:bg-amber-500 hover:text-black transition text-center shrink-0"
+                          title={`Ir a la ceremonia completa ${entry.year}`}
+                        >
+                          <span className="block text-base font-black leading-none">{entry.year}</span>
+                          <span className="text-[10px] uppercase font-bold tracking-wider">{entry.editionLabel}</span>
+                        </button>
+
+                        {/* Winner Poster */}
+                        <FilmPoster
+                          film={entry.winner?.film || ""}
+                          filmId={entry.winner?.filmId}
+                          initialPoster={entry.winner?.poster_path}
+                          size="medium"
+                        />
+
+                        {/* Film & Winner Details */}
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                              <Crown className="w-3 h-3 fill-black" />
+                              Ganadora
+                            </span>
+                            {watched && (
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3" />
+                                ¡Vista!
                               </span>
-                            ) : null}
+                            )}
+                          </div>
+
+                          <h3 className="text-base sm:text-lg font-black text-white group-hover:text-amber-300 transition">
+                            {entry.winner?.film}
+                          </h3>
+
+                          {entry.winner?.name && (
+                            <p className="text-xs font-semibold text-amber-300">
+                              {entry.winner.name}
+                            </p>
+                          )}
+                          {entry.winner?.detail && (
+                            <p className="text-[11px] text-zinc-400 line-clamp-1">
+                              {entry.winner.detail}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right Link */}
+                      <div className="flex items-center gap-2 justify-end shrink-0 pt-2 sm:pt-0">
+                        <Link
+                          href={entry.winner?.tmdb_id ? `/movie/${entry.winner.tmdb_id}` : `/search?q=${encodeURIComponent(entry.winner?.film || "")}`}
+                          className="px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500 text-amber-400 hover:text-black text-xs font-bold transition flex items-center gap-1.5"
+                        >
+                          <span>Ficha</span>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </Link>
+                      </div>
+                    </div>
+
+                    {/* Bottom Row: Nominees (Smaller & Dimmer tone) */}
+                    {entry.nominees && entry.nominees.length > 0 && (
+                      <div className="pt-3 border-t border-white/5 space-y-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                          Nominadas ese año ({entry.nominees.length}):
+                        </span>
+
+                        <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+                          {entry.nominees.map((nom, nIdx) => {
+                            const isNomWatched = isMovieWatched(nom.film, nom.tmdb_id);
+                            return (
+                              <div
+                                key={`${nom.film}-${nIdx}`}
+                                className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-white/[0.03] border border-white/5 shrink-0 opacity-75 hover:opacity-100 transition"
+                              >
+                                <FilmPoster
+                                  film={nom.film}
+                                  filmId={nom.filmId}
+                                  initialPoster={nom.poster_path}
+                                  size="small"
+                                />
+                                <div className="space-y-0.5 text-left max-w-[140px]">
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-[11px] font-semibold text-zinc-300 truncate block">
+                                      {nom.film}
+                                    </span>
+                                    {isNomWatched && <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400 shrink-0" />}
+                                  </div>
+                                  {nom.name && (
+                                    <span className="text-[10px] text-zinc-400 truncate block">
+                                      {nom.name}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-20 bg-[#141420]/50 rounded-3xl border border-white/5 p-8">
+              <Award className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
+              <h3 className="text-lg font-bold text-white">No se encontraron ganadores</h3>
+              <p className="text-sm text-zinc-400 mt-1">Prueba con otro término de búsqueda.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODE 3: SEARCH RESULTS ACROSS ALL 98 EDITIONS             */}
+      {/* ======================================================== */}
+      {viewMode === "search" && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <Search className="w-5 h-5 text-amber-400" />
+              <span>Resultados para &quot;{debouncedGlobalSearch}&quot; ({searchResults?.totalMatches || 0})</span>
+            </h2>
+            <button
+              onClick={() => {
+                setGlobalSearchInput("");
+                setViewMode("by_year");
+              }}
+              className="text-xs text-amber-400 hover:underline flex items-center gap-1"
+            >
+              <span>Volver al explorador</span>
+            </button>
+          </div>
+
+          {searchingGlobal ? (
+            <div className="text-center py-20 space-y-3">
+              <RefreshCw className="w-8 h-8 text-amber-400 animate-spin mx-auto" />
+              <p className="text-sm text-zinc-400">Buscando en las 98 ediciones...</p>
+            </div>
+          ) : searchResults && searchResults.totalMatches > 0 ? (
+            <div className="space-y-6">
+              {/* Matched Editions */}
+              {searchResults.matchedEditions.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-amber-400">
+                    Ediciones encontradas:
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {searchResults.matchedEditions.map((ed) => (
+                      <button
+                        key={ed.ceremony}
+                        onClick={() => handleSelectYear(ed.year)}
+                        className="px-4 py-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 hover:bg-amber-500 hover:text-black transition flex items-center gap-2 font-bold text-sm"
+                      >
+                        <Calendar className="w-4 h-4" />
+                        <span>{ed.year} · {ed.editionLabel}</span>
+                        {ed.bestPicture && <span className="text-xs font-normal">({ed.bestPicture.film})</span>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Matched Winners */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+                  Premios y Ganadores coincidentes:
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {searchResults.matchedWinners.map((winner, idx) => {
+                    const watched = isMovieWatched(winner.winner?.film || "", winner.winner?.tmdb_id);
+                    return (
+                      <div
+                        key={`${winner.ceremony}-${winner.winner?.film}-${idx}`}
+                        className="p-4 rounded-2xl bg-[#141420] border border-white/5 hover:border-amber-500/30 transition flex flex-col justify-between"
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                              <span>{winner.categoryIcon || "🏆"}</span>
+                              <span>{winner.categoryEs}</span>
+                            </span>
+                            <button
+                              onClick={() => handleSelectYear(winner.year)}
+                              className="text-[11px] font-bold text-zinc-400 hover:text-white px-2 py-0.5 rounded bg-white/5"
+                            >
+                              {winner.year} · {winner.editionLabel}
+                            </button>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <FilmPoster
+                              film={winner.winner?.film || ""}
+                              filmId={winner.winner?.filmId}
+                              initialPoster={winner.winner?.poster_path}
+                              size="medium"
+                            />
+                            <div className="space-y-0.5 min-w-0 flex-1">
+                              <h4 className="text-base font-bold text-white truncate">{winner.winner?.film}</h4>
+                              {winner.winner?.name && <p className="text-xs font-semibold text-amber-200 truncate">{winner.winner.name}</p>}
+                              {winner.winner?.detail && <p className="text-[11px] text-zinc-400 line-clamp-1">{winner.winner.detail}</p>}
+                            </div>
                           </div>
                         </div>
 
-                        {/* Action button */}
-                        <div className="shrink-0 flex items-center gap-2">
-                          {isSeen ? (
-                            <span className="px-2.5 py-1 rounded-xl text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
-                              <CheckCircle className="w-3.5 h-3.5 text-amber-400" />
-                              <span>VISTA</span>
+                        <div className="pt-3 mt-3 border-t border-white/5 flex items-center justify-between">
+                          {watched ? (
+                            <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Vista</span>
                             </span>
                           ) : (
-                            <button
-                              onClick={() =>
-                                openLogModal({
-                                  id: nominee.tmdb_id,
-                                  title: nominee.title,
-                                  poster_path: details?.poster_path,
-                                })
-                              }
-                              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition flex items-center gap-1"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                              <span>Log</span>
-                            </button>
+                            <span className="text-xs text-zinc-500">No registrada</span>
                           )}
+
+                          <button
+                            onClick={() => handleSelectYear(winner.year)}
+                            className="text-xs font-semibold text-amber-400 hover:underline flex items-center gap-1"
+                          >
+                            <span>Ver ceremonia completa</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
                     );
                   })}
                 </div>
               </div>
-            ))}
-          </div>
-
-          {/* AI Awards Coach (Solo para usuarios autenticados) */}
-          {user && (
-            <div className="pt-2">
-              <AICoach
-                awardsName={`${activeSeason.title} (${activeSeason.edition})`}
-                categories={activeSeason.categories}
-                userWatchedIds={watchedTmdbIds}
-                watchlistTitles={watchlistTitles}
-                progressPercent={progressPercent}
-              />
+            </div>
+          ) : (
+            <div className="text-center py-20 bg-[#141420]/50 rounded-3xl border border-white/5 p-8">
+              <Search className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
+              <h3 className="text-lg font-bold text-white">No se encontraron resultados</h3>
+              <p className="text-sm text-zinc-400 mt-1">
+                Prueba buscando por año (ej: 1999), título en inglés o nombre de una celebridad.
+              </p>
             </div>
           )}
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* TAB 2: MI QUINIELA (PRODE DE PREMIOS) */}
-      {/* ========================================================================= */}
-      {activeTab === "prode" && (
-        <div className="space-y-8 animate-fadeIn">
-          {/* Banner Resumen Quiniela */}
-          <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-[#1f1910] via-[#171422] to-[#13111d] border border-amber-500/40 shadow-2xl relative overflow-hidden">
-            <div className="absolute -right-10 -bottom-10 w-44 h-44 rounded-full bg-amber-500/10 blur-3xl pointer-events-none" />
-
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
-                    <Trophy className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Tu Boleta de Votación</span>
-                  </span>
-                  {selectedYear === 2026 ? (
-                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      <span>Votación Abierta</span>
-                    </span>
-                  ) : (
-                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                      Resultados Oficiales Computados
-                    </span>
-                  )}
-                </div>
-
-                <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                  Predecí los Ganadores de los Oscars {selectedYear}
-                </h2>
-
-                <p className="text-xs sm:text-sm text-zinc-400 max-w-xl">
-                  Seleccioná tu candidato a ganar la estatuilla dorada en cada rubro. Sumás{" "}
-                  <strong className="text-amber-400">10 puntos por cada acierto</strong> oficial en
-                  la gala.
-                </p>
-
-                {/* Status breakdown pills */}
-                <div className="flex flex-wrap items-center gap-3 pt-2">
-                  <div className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs font-bold text-zinc-300 flex items-center gap-1.5">
-                    <CheckCircle className="w-4 h-4 text-amber-400" />
-                    <span>
-                      {predictedCategoriesCount} de {totalCategories} pronosticadas
-                    </span>
-                  </div>
-
-                  {scoreBreakdown.hits > 0 && (
-                    <div className="px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                      <Trophy className="w-4 h-4 text-amber-400" />
-                      <span>
-                        {scoreBreakdown.score} Puntos ({scoreBreakdown.hits} Aciertos)
-                      </span>
-                    </div>
-                  )}
-
-                  {saveSuccessMsg && (
-                    <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-xl flex items-center gap-1.5 animate-bounce">
-                      <Check className="w-4 h-4 text-emerald-400" />
-                      ¡Predicciones guardadas con éxito!
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Botones de acción principales */}
-              <div className="flex flex-col sm:flex-row md:flex-col gap-2.5 shrink-0">
-                <button
-                  onClick={handleSavePredictions}
-                  disabled={isSaving || predictedCategoriesCount === 0}
-                  className={`px-5 py-3 rounded-2xl text-xs sm:text-sm font-black transition flex items-center justify-center gap-2 shadow-xl ${
-                    hasUnsavedChanges
-                      ? "bg-amber-500 hover:bg-amber-400 text-black shadow-amber-500/30 scale-105 ring-2 ring-amber-300"
-                      : "bg-amber-500/90 hover:bg-amber-400 text-black shadow-amber-500/20"
-                  } disabled:opacity-50 disabled:cursor-not-allowed`}
-                >
-                  <Save className="w-4 h-4" />
-                  <span>
-                    {isSaving
-                      ? "Guardando..."
-                      : hasUnsavedChanges
-                      ? "Confirmar y Guardar Cambios"
-                      : "Guardar Predicciones"}
-                  </span>
-                </button>
-
-                <button
-                  onClick={() => setShowShareModal(true)}
-                  disabled={predictedCategoriesCount === 0}
-                  className="px-5 py-3 rounded-2xl text-xs sm:text-sm font-bold bg-white/10 hover:bg-white/15 text-white border border-white/15 transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <Share2 className="w-4 h-4 text-amber-400" />
-                  <span>Compartir Quiniela</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Categorías con selector interactivo */}
-          <div className="space-y-6">
-            {activeSeason.categories.map((category) => {
-              const chosenTmdbId = userPredictions[category.name];
-              const officialWinner = category.nominees.find((n) => n.isWinner);
-
-              return (
-                <div
-                  key={category.name}
-                  className="p-6 rounded-3xl bg-[#141420] border border-white/5 space-y-4 shadow-xl"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/5 pb-3">
-                    <div className="flex items-center gap-2.5">
-                      <Award className="w-5 h-5 text-amber-400" />
-                      <h3 className="text-lg font-bold text-white tracking-tight">
-                        {category.name}
-                      </h3>
-                    </div>
-
-                    <div className="text-xs">
-                      {chosenTmdbId ? (
-                        <span className="text-amber-400 font-bold flex items-center gap-1.5">
-                          <CheckCircle className="w-3.5 h-3.5" />
-                          <span>
-                            Voto:{" "}
-                            {category.nominees.find((n) => n.tmdb_id === chosenTmdbId)?.title ||
-                              "Seleccionado"}
-                          </span>
-                        </span>
-                      ) : (
-                        <span className="text-zinc-500 italic">Sin predicción elegida aún</span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                    {category.nominees.map((nominee) => {
-                      const isSelected = chosenTmdbId === nominee.tmdb_id;
-                      const details = movieDetails[nominee.tmdb_id];
-                      const posterUrl = getImageUrl(details?.poster_path, "w185");
-                      const isWinner = Boolean(nominee.isWinner);
-                      const isHit = isSelected && isWinner;
-                      const isMiss = isSelected && officialWinner && !isWinner;
-
-                      return (
-                        <div
-                          key={`${category.name}-${nominee.tmdb_id}`}
-                          onClick={() => handleSelectNominee(category.name, nominee.tmdb_id)}
-                          className={`p-3.5 rounded-2xl border transition-all duration-200 cursor-pointer flex flex-col justify-between gap-3 relative group ${
-                            isSelected
-                              ? "bg-[#1f1910] border-amber-400 ring-2 ring-amber-400/30 shadow-lg shadow-amber-950/40"
-                              : "bg-white/5 border-white/5 hover:border-white/20 hover:bg-white/10"
-                          }`}
-                        >
-                          <div className="flex items-start gap-3 min-w-0">
-                            {/* Poster */}
-                            <div className="w-12 h-16 rounded-xl overflow-hidden shrink-0 bg-black/40 border border-white/10 relative">
-                              <img
-                                src={posterUrl}
-                                alt={nominee.title}
-                                className="w-full h-full object-cover group-hover:scale-105 transition"
-                                loading="lazy"
-                              />
-                            </div>
-
-                            {/* Details */}
-                            <div className="min-w-0 flex-1">
-                              <h4 className="font-bold text-sm text-white group-hover:text-amber-300 transition line-clamp-1">
-                                {nominee.title}
-                              </h4>
-                              {nominee.nominationDetails && (
-                                <p className="text-xs text-zinc-400 truncate mt-0.5">
-                                  {nominee.nominationDetails}
-                                </p>
-                              )}
-
-                              {details?.vote_average ? (
-                                <div className="text-[11px] text-zinc-400 flex items-center gap-1 mt-1">
-                                  <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-                                  <span>{details.vote_average.toFixed(1)}</span>
-                                </div>
-                              ) : null}
-                            </div>
-                          </div>
-
-                          {/* Evaluation / Official winner indicators */}
-                          {isWinner && (
-                            <div className="pt-1">
-                              <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-500 text-black flex items-center gap-1 w-fit">
-                                <Trophy className="w-3 h-3" />
-                                <span>GANADORA OFICIAL</span>
-                              </span>
-                            </div>
-                          )}
-
-                          {isHit && (
-                            <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
-                              <CheckCircle className="w-3.5 h-3.5" />
-                              <span>¡Acertaste! +10 puntos</span>
-                            </span>
-                          )}
-
-                          {isMiss && (
-                            <span className="text-[11px] font-bold text-rose-400 flex items-center gap-1">
-                              <X className="w-3.5 h-3.5" />
-                              <span>No acertó</span>
-                            </span>
-                          )}
-
-                          {/* Selector Button */}
-                          <div className="pt-1 flex items-center justify-end">
-                            {isSelected ? (
-                              <button
-                                type="button"
-                                className="w-full py-1.5 px-3 rounded-xl text-xs font-black bg-amber-500 text-black flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20"
-                              >
-                                <Trophy className="w-3.5 h-3.5" />
-                                <span>Mi Voto a Ganador 🏆</span>
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                className="w-full py-1.5 px-3 rounded-xl text-xs font-semibold bg-white/5 group-hover:bg-white/15 text-zinc-300 group-hover:text-white transition flex items-center justify-center gap-1.5 border border-white/5"
-                              >
-                                <Circle className="w-3.5 h-3.5 text-zinc-500" />
-                                <span>Votar como Ganador</span>
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Persistent Save & Share Bar at bottom */}
-          {hasUnsavedChanges && (
-            <div className="sticky bottom-6 z-30 p-4 rounded-2xl bg-gradient-to-r from-[#1f1910] to-[#141420] border border-amber-500/50 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-4 animate-slideUp">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-amber-400 animate-spin" />
-                <span className="text-xs sm:text-sm font-bold text-white">
-                  Tenés cambios sin guardar en tu Quiniela ({predictedCategoriesCount} de{" "}
-                  {totalCategories} categorías elegidas)
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <button
-                  onClick={handleSavePredictions}
-                  disabled={isSaving}
-                  className="flex-1 sm:flex-none px-6 py-2.5 rounded-xl text-xs font-black bg-amber-500 hover:bg-amber-400 text-black shadow-lg shadow-amber-500/30 transition flex items-center justify-center gap-1.5"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>{isSaving ? "Guardando..." : "Confirmar y Guardar"}</span>
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* TAB 3: LEADERBOARD / RANKING */}
-      {/* ========================================================================= */}
-      {activeTab === "leaderboard" && (
-        <div className="space-y-8 animate-fadeIn">
-          {/* Rules & Points Banner */}
-          <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-[#171420] via-[#141424] to-[#12111c] border border-yellow-500/30 shadow-2xl space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="space-y-1">
-                <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-amber-400">
-                  <Medal className="w-4 h-4 text-yellow-400" />
-                  <span>Tabla de Posiciones • Quiniela {selectedYear}</span>
-                </div>
-                <h2 className="text-2xl sm:text-3xl font-black text-white">
-                  Ranking Oficial de la Comunidad
-                </h2>
-                <p className="text-xs sm:text-sm text-zinc-400 max-w-lg">
-                  Regla de puntuación: Cada categoría acertada otorga{" "}
-                  <strong className="text-amber-400">10 puntos</strong>. En caso de empate, se
-                  prioriza la mayor cantidad de aciertos y la fecha de envío.
-                </p>
-              </div>
-
-              {selectedYear === 2026 && (
-                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 max-w-xs space-y-1">
-                  <div className="font-bold flex items-center gap-1">
-                    <Info className="w-3.5 h-3.5" />
-                    <span>Gala 2026 Pendiente</span>
-                  </div>
-                  <p className="text-[11px] text-zinc-400">
-                    Los puntos oficiales se computarán automáticamente una vez entregadas las
-                    estatuillas doradas.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Podio Top 3 */}
-          {leaderboard.length >= 3 && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-              {/* 2º PUESTO (Plata) */}
-              <div className="p-5 rounded-3xl bg-gradient-to-b from-zinc-800/40 to-black/40 border border-zinc-400/30 shadow-xl flex flex-col items-center text-center space-y-3 order-2 sm:order-1">
-                <div className="relative">
-                  <img
-                    src={
-                      leaderboard[1].avatarUrl ||
-                      "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"
-                    }
-                    alt={leaderboard[1].username}
-                    className="w-16 h-16 rounded-full object-cover border-2 border-zinc-400 shadow-lg"
-                  />
-                  <span className="absolute -bottom-2 -right-1 text-xl">🥈</span>
-                </div>
-                <div>
-                  <h4 className="font-bold text-white text-sm">
-                    {leaderboard[1].username}
-                    {leaderboard[1].isCurrentUser && " (Vos)"}
-                  </h4>
-                  <span className="text-xs text-zinc-400">2º Lugar</span>
-                </div>
-                <div className="text-2xl font-black text-zinc-200">{leaderboard[1].score} pts</div>
-                <span className="text-[11px] text-zinc-400 font-semibold bg-white/5 px-2.5 py-1 rounded-full border border-white/5">
-                  {leaderboard[1].hits} aciertos
-                </span>
-              </div>
-
-              {/* 1º PUESTO (Oro) */}
-              <div className="p-6 rounded-3xl bg-gradient-to-b from-amber-500/25 via-amber-950/20 to-black/40 border-2 border-amber-400 shadow-2xl shadow-amber-500/20 flex flex-col items-center text-center space-y-3 sm:-translate-y-3 order-1 sm:order-2">
-                <div className="relative">
-                  <img
-                    src={
-                      leaderboard[0].avatarUrl ||
-                      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80"
-                    }
-                    alt={leaderboard[0].username}
-                    className="w-20 h-20 rounded-full object-cover border-2 border-amber-400 shadow-xl shadow-amber-500/30"
-                  />
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-2xl">👑</span>
-                  <span className="absolute -bottom-2 -right-1 text-2xl">🥇</span>
-                </div>
-                <div>
-                  <h4 className="font-black text-white text-base">
-                    {leaderboard[0].username}
-                    {leaderboard[0].isCurrentUser && " (Vos)"}
-                  </h4>
-                  <span className="text-xs text-amber-400 font-bold uppercase tracking-wider">
-                    Campeón Cinéfilo
-                  </span>
-                </div>
-                <div className="text-3xl font-black text-amber-400">{leaderboard[0].score} pts</div>
-                <span className="text-xs text-amber-300 font-bold bg-amber-500/20 px-3 py-1 rounded-full border border-amber-500/30">
-                  {leaderboard[0].hits} aciertos
-                </span>
-              </div>
-
-              {/* 3º PUESTO (Bronce) */}
-              <div className="p-5 rounded-3xl bg-gradient-to-b from-amber-900/30 to-black/40 border border-amber-700/30 shadow-xl flex flex-col items-center text-center space-y-3 order-3">
-                <div className="relative">
-                  <img
-                    src={
-                      leaderboard[2].avatarUrl ||
-                      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=200&q=80"
-                    }
-                    alt={leaderboard[2].username}
-                    className="w-16 h-16 rounded-full object-cover border-2 border-amber-700 shadow-lg"
-                  />
-                  <span className="absolute -bottom-2 -right-1 text-xl">🥉</span>
-                </div>
-                <div>
-                  <h4 className="font-bold text-white text-sm">
-                    {leaderboard[2].username}
-                    {leaderboard[2].isCurrentUser && " (Vos)"}
-                  </h4>
-                  <span className="text-xs text-zinc-400">3º Lugar</span>
-                </div>
-                <div className="text-2xl font-black text-amber-600">{leaderboard[2].score} pts</div>
-                <span className="text-[11px] text-zinc-400 font-semibold bg-white/5 px-2.5 py-1 rounded-full border border-white/5">
-                  {leaderboard[2].hits} aciertos
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Tabla de Posiciones Completa */}
-          <div className="p-6 rounded-3xl bg-[#141420] border border-white/5 shadow-xl space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-white/5 text-xs font-bold text-zinc-400 uppercase tracking-wider">
-              <div className="flex items-center gap-6">
-                <span className="w-8 text-center">#</span>
-                <span>Usuario</span>
-              </div>
-              <div className="flex items-center gap-6">
-                <span className="hidden sm:inline">Pronosticadas</span>
-                <span>Aciertos</span>
-                <span className="w-16 text-right">Puntos</span>
-              </div>
-            </div>
-
-            {leaderboard.length === 0 ? (
-              <div className="py-12 text-center text-zinc-400 space-y-3">
-                <Trophy className="w-10 h-10 text-amber-500/40 mx-auto" />
-                <p className="text-sm font-bold text-white">Aún no hay predicciones registradas para esta edición</p>
-                <p className="text-xs text-zinc-500 max-w-sm mx-auto">
-                  ¡Sé el primero en enviar tu Quiniela en la pestaña "Mi Quiniela" y liderar la tabla de posiciones!
-                </p>
-              </div>
-            ) : (
-              <div className="divide-y divide-white/5">
-                {leaderboard.map((entry) => (
-                  <div
-                    key={`${entry.userId}-${entry.rank}`}
-                    className={`py-3.5 px-3 rounded-2xl flex items-center justify-between transition-colors ${
-                      entry.isCurrentUser
-                        ? "bg-amber-500/15 border border-amber-500/30 text-white font-bold"
-                        : "hover:bg-white/5 text-zinc-300"
-                    }`}
-                  >
-                  {/* Posición & Avatar & Nombre */}
-                  <div className="flex items-center gap-4 min-w-0">
-                    <span className="w-8 text-center font-black text-sm text-zinc-400">
-                      {entry.rank === 1
-                        ? "🥇"
-                        : entry.rank === 2
-                        ? "🥈"
-                        : entry.rank === 3
-                        ? "🥉"
-                        : `#${entry.rank}`}
-                    </span>
-
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-9 h-9 rounded-full overflow-hidden bg-black/40 border border-white/10 shrink-0">
-                        <img
-                          src={
-                            entry.avatarUrl ||
-                            "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"
-                          }
-                          alt={entry.username}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <div className="min-w-0 truncate">
-                        <span className="text-sm font-bold text-white block truncate">
-                          {entry.username}
-                        </span>
-                        {entry.isCurrentUser && (
-                          <span className="text-[10px] font-black text-amber-400 uppercase tracking-wider">
-                            Tu Quiniela
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Estadísticas & Puntaje */}
-                  <div className="flex items-center gap-6 shrink-0">
-                    <span className="hidden sm:inline text-xs text-zinc-400">
-                      {entry.predictionsCount}/{totalCategories}
-                    </span>
-                    <span className="text-xs font-semibold text-zinc-300">
-                      {entry.hits} {entry.hits === 1 ? "acierto" : "aciertos"}
-                    </span>
-                    <span className="w-16 text-right text-base font-black text-amber-400">
-                      {entry.score} pts
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-          {/* CTA si el usuario aún no tiene quiniela guardada */}
-          {!savedPrediction && (
-            <div className="p-6 rounded-3xl bg-gradient-to-r from-amber-500/10 to-transparent border border-amber-500/20 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div>
-                <h4 className="text-base font-bold text-white">
-                  ¿Todavía no dejaste tu pronóstico de los Oscars {selectedYear}?
-                </h4>
-                <p className="text-xs text-zinc-400 mt-0.5">
-                  Armá tu quiniela en 2 minutos y competí contra los demás cinéfilos por el primer
-                  lugar.
-                </p>
-              </div>
-              <button
-                onClick={() => setActiveTab("prode")}
-                className="px-5 py-2.5 rounded-xl text-xs font-black bg-amber-500 text-black hover:bg-amber-400 transition shrink-0 flex items-center gap-2"
-              >
-                <Trophy className="w-4 h-4" />
-                <span>Armar Mi Quiniela</span>
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* MODAL DE COMPARTIR: TARJETA VISUAL & ENLACE COMPARTIBLE */}
-      {/* ========================================================================= */}
-      {showShareModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-          <div className="bg-[#12111a] border border-amber-500/40 rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl relative space-y-6 p-6 sm:p-8">
-            {/* Botón cerrar */}
-            <button
-              onClick={() => setShowShareModal(false)}
-              className="absolute top-4 right-4 p-2 rounded-full bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="text-center space-y-1">
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center justify-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Tarjeta Visual Compartible</span>
-              </span>
-              <h3 className="text-xl sm:text-2xl font-black text-white">
-                Mis Predicciones Oscars {selectedYear}
-              </h3>
-            </div>
-
-            {/* TARJETA VISUAL ESTILO BOLETO / PASAPORTE DE GALA */}
-            <div className="p-6 rounded-2xl bg-gradient-to-b from-[#1c1810] via-[#121118] to-[#0a0a0f] border-2 border-amber-500/50 shadow-2xl relative overflow-hidden space-y-4">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
-
-              {/* Encabezado de la tarjeta */}
-              <div className="flex items-center justify-between border-b border-amber-500/20 pb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-amber-500 text-black flex items-center justify-center font-black text-xs">
-                    FT
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-black uppercase text-amber-400 tracking-wider block">
-                      FILMTRACKER QUINIELA
-                    </span>
-                    <span className="text-xs font-bold text-white">{activeSeason.edition}</span>
-                  </div>
-                </div>
-
-                <div className="text-right">
-                  <span className="text-[10px] font-bold text-zinc-400 block">USUARIO</span>
-                  <span className="text-xs font-black text-amber-300">{currentUsername}</span>
-                </div>
-              </div>
-
-              {/* Lista de ganadores pronosticados */}
-              <div className="space-y-2.5">
-                {activeSeason.categories.map((cat) => {
-                  const chosenId = userPredictions[cat.name];
-                  const nominee = cat.nominees.find((n) => n.tmdb_id === chosenId);
-
-                  return (
-                    <div
-                      key={cat.name}
-                      className="flex items-center justify-between text-xs py-1 border-b border-white/5"
-                    >
-                      <span className="text-zinc-400 font-medium">{cat.name}:</span>
-                      <span className="font-bold text-amber-300 text-right">
-                        {nominee ? nominee.title : "—"} 🏆
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Pie de la tarjeta */}
-              <div className="pt-2 border-t border-amber-500/20 flex items-center justify-between text-[10px] text-zinc-400">
-                <span>filmtracker.app/awards</span>
-                <span className="text-amber-400 font-mono font-bold tracking-widest uppercase">
-                  VOTO VERIFICADO
-                </span>
-              </div>
-            </div>
-
-            {/* Acciones de Copiado / Compartir */}
-            <div className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <button
-                  onClick={handleCopyShareText}
-                  className="py-3 px-4 rounded-xl text-xs font-black bg-amber-500 hover:bg-amber-400 text-black shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2"
-                >
-                  {copiedText ? (
-                    <>
-                      <Check className="w-4 h-4" />
-                      <span>¡Copiado!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-4 h-4" />
-                      <span>Copiar Texto (WhatsApp)</span>
-                    </>
-                  )}
-                </button>
-
-                <button
-                  onClick={handleCopyShareLink}
-                  className="py-3 px-4 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/15 text-white border border-white/10 transition flex items-center justify-center gap-2"
-                >
-                  {copiedLink ? (
-                    <>
-                      <Check className="w-4 h-4 text-emerald-400" />
-                      <span>¡Enlace copiado!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Share2 className="w-4 h-4 text-amber-400" />
-                      <span>Copiar Enlace Directo</span>
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {(copiedText || copiedLink) && (
-                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center text-xs font-bold text-emerald-400 animate-fadeIn">
-                  🎉 ¡Copiado al portapapeles! Listo para pegar en tus redes o chats.
-                </div>
-              )}
-            </div>
-          </div>
         </div>
       )}
     </div>
+  );
+}
+
+export default function AwardsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="py-20 text-center text-zinc-400 flex items-center justify-center gap-2">
+          <RefreshCw className="w-5 h-5 animate-spin text-amber-400" />
+          <span>Cargando Enciclopedia de los Premios Oscar...</span>
+        </div>
+      }
+    >
+      <AwardsContent />
+    </Suspense>
   );
 }

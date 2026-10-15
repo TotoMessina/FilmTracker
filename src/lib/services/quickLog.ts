@@ -27,6 +27,7 @@ export interface QuickLogOptions {
   platform?: string | null;
   isRewatch?: boolean;
   existingLogId?: string | null;
+  createNewRewatch?: boolean;
   user?: any;
   isGuest?: boolean;
   triggerConfetti?: () => void;
@@ -78,24 +79,31 @@ export function setLastUsedPlatform(platform: string): void {
 }
 
 /**
- * Finds if the user already has a log recorded for this movie.
+ * Finds all logs recorded by the user for this movie (chronological viewings).
  */
-export async function getExistingUserLog(
+export async function getAllUserMovieLogs(
   tmdbId: number,
   userId?: string | null,
   isGuest?: boolean
-): Promise<Log | null> {
-  if (!tmdbId) return null;
+): Promise<Log[]> {
+  if (!tmdbId) return [];
 
   // Guest Mode
   if (isGuest || !userId) {
-    if (typeof window === "undefined") return null;
+    if (typeof window === "undefined") return [];
     try {
-      const guestLogs = JSON.parse(localStorage.getItem("filmtracker_guest_logs") || "[]");
-      const found = guestLogs.find((l: any) => l.tmdb_id === tmdbId);
-      return found || null;
+      const guestLogs: any[] = JSON.parse(
+        localStorage.getItem("filmtracker_guest_logs") || "[]"
+      );
+      return guestLogs
+        .filter((l: any) => l.tmdb_id === tmdbId)
+        .sort((a: any, b: any) => {
+          const dateA = a.watched_at || a.created_at || "";
+          const dateB = b.watched_at || b.created_at || "";
+          return dateB.localeCompare(dateA);
+        });
     } catch {
-      return null;
+      return [];
     }
   }
 
@@ -106,22 +114,34 @@ export async function getExistingUserLog(
       .select("*, movie:movies(*)")
       .eq("user_id", userId)
       .eq("tmdb_id", tmdbId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .order("watched_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false });
 
-    return (data as Log) || null;
+    return (data as Log[]) || [];
   } catch (err) {
-    console.warn("Error fetching existing user log:", err);
-    return null;
+    console.warn("Error fetching user movie logs:", err);
+    return [];
   }
+}
+
+/**
+ * Finds if the user already has a log recorded for this movie.
+ * Returns the most recent viewing if multiple exist.
+ */
+export async function getExistingUserLog(
+  tmdbId: number,
+  userId?: string | null,
+  isGuest?: boolean
+): Promise<Log | null> {
+  const allLogs = await getAllUserMovieLogs(tmdbId, userId, isGuest);
+  return allLogs[0] || null;
 }
 
 /**
  * Executes a fast, streamlined movie log without requiring the user
  * to open the heavy multi-field modal.
- * If the movie was already logged by this user, it UPDATES the existing log
- * instead of creating a duplicate.
+ * If createNewRewatch is true, it inserts a new rewatch log with its own date.
+ * If editing, it updates the targeted existing log.
  */
 export async function performQuickLog(options: QuickLogOptions): Promise<QuickLogResult> {
   const {
@@ -131,6 +151,7 @@ export async function performQuickLog(options: QuickLogOptions): Promise<QuickLo
     platform = getLastUsedPlatform(),
     isRewatch = false,
     existingLogId,
+    createNewRewatch = false,
     user,
     isGuest,
     triggerConfetti,
@@ -177,10 +198,11 @@ export async function performQuickLog(options: QuickLogOptions): Promise<QuickLo
       }
 
       // Check if this movie was already logged
+      const shouldCreateNew = Boolean(createNewRewatch);
       const existingIndex = guestLogs.findIndex(
-        (l: any) => (existingLogId && l.id === existingLogId) || l.tmdb_id === tmdbId
+        (l: any) => (existingLogId && l.id === existingLogId) || (!shouldCreateNew && l.tmdb_id === tmdbId)
       );
-      const isExisting = existingIndex !== -1;
+      const isExisting = !shouldCreateNew && existingIndex !== -1;
       const existingItem = isExisting ? guestLogs[existingIndex] : null;
 
       const logToSave: Log = {
@@ -189,14 +211,14 @@ export async function performQuickLog(options: QuickLogOptions): Promise<QuickLo
         tmdb_id: tmdbId,
         watched_at: finalWatchedAt,
         rating: finalRating,
-        review: existingItem?.review || null,
-        notes: existingItem?.notes || null,
+        review: isExisting ? (existingItem?.review || null) : null,
+        notes: isExisting ? (existingItem?.notes || null) : null,
         platform: platform || existingItem?.platform || "Netflix",
         format: existingItem?.format || "Normal",
-        is_rewatch: isRewatch,
-        contains_spoilers: existingItem?.contains_spoilers || false,
-        custom_poster_path: existingItem?.custom_poster_path || null,
-        created_at: existingItem?.created_at || new Date().toISOString(),
+        is_rewatch: Boolean(isRewatch || shouldCreateNew),
+        contains_spoilers: isExisting ? (existingItem?.contains_spoilers || false) : false,
+        custom_poster_path: isExisting ? (existingItem?.custom_poster_path || null) : null,
+        created_at: isExisting ? (existingItem?.created_at || new Date().toISOString()) : new Date().toISOString(),
         movie: {
           tmdb_id: tmdbId,
           title,
@@ -215,11 +237,12 @@ export async function performQuickLog(options: QuickLogOptions): Promise<QuickLo
 
       let updatedLogs: any[];
       if (isExisting) {
-        // Update in-place to avoid duplicates
+        // Update in-place only if user is specifically editing that viewing
         updatedLogs = guestLogs.map((l: any, idx: number) =>
           idx === existingIndex ? logToSave : l
         );
       } else {
+        // Prepend new viewing to preserve all viewing dates in the diary
         updatedLogs = [logToSave, ...guestLogs];
       }
 
@@ -308,29 +331,34 @@ export async function performQuickLog(options: QuickLogOptions): Promise<QuickLo
       console.warn("QuickLog movie cache warning:", movieError);
     }
 
-    // Step B: Check for existing log for (activeUserId, tmdbId) or by existingLogId
-    let targetLogId: string | null = existingLogId || null;
+    // Step B: Target log determination
+    const shouldCreateNew = Boolean(createNewRewatch);
+    let targetLogId: string | null = (!shouldCreateNew && existingLogId) ? existingLogId : null;
     let existingLogData: any = null;
 
-    const { data: existingLogs } = await supabase
-      .from("logs")
-      .select("id, rating, review, notes, platform, format, is_rewatch, contains_spoilers, custom_poster_path, watched_at, created_at")
-      .eq("user_id", activeUserId)
-      .eq("tmdb_id", tmdbId)
-      .order("created_at", { ascending: false });
+    if (!shouldCreateNew && !targetLogId) {
+      // If NOT a new rewatch and no specific log id passed, find latest log to update
+      const { data: existingLogs } = await supabase
+        .from("logs")
+        .select("id, rating, review, notes, platform, format, is_rewatch, contains_spoilers, custom_poster_path, watched_at, created_at")
+        .eq("user_id", activeUserId)
+        .eq("tmdb_id", tmdbId)
+        .order("created_at", { ascending: false });
 
-    if (existingLogs && existingLogs.length > 0) {
-      existingLogData = existingLogs[0];
-      targetLogId = existingLogs[0].id;
-
-      // Clean up any extraneous duplicate rows created earlier
-      if (existingLogs.length > 1) {
-        const extraIds = existingLogs.slice(1).map((l: any) => l.id);
-        await supabase.from("logs").delete().in("id", extraIds);
+      if (existingLogs && existingLogs.length > 0) {
+        existingLogData = existingLogs[0];
+        targetLogId = existingLogs[0].id;
       }
+    } else if (targetLogId) {
+      const { data: specificLog } = await supabase
+        .from("logs")
+        .select("id, rating, review, notes, platform, format, is_rewatch, contains_spoilers, custom_poster_path, watched_at, created_at")
+        .eq("id", targetLogId)
+        .maybeSingle();
+      if (specificLog) existingLogData = specificLog;
     }
 
-    const isUpdate = Boolean(targetLogId);
+    const isUpdate = !shouldCreateNew && Boolean(targetLogId);
     let savedLogId = targetLogId;
 
     if (isUpdate && targetLogId) {
@@ -341,13 +369,13 @@ export async function performQuickLog(options: QuickLogOptions): Promise<QuickLo
           watched_at: finalWatchedAt,
           rating: finalRating,
           platform: platform || existingLogData?.platform || "Netflix",
-          is_rewatch: isRewatch,
+          is_rewatch: Boolean(isRewatch),
         })
         .eq("id", targetLogId);
 
       if (updateError) throw updateError;
     } else {
-      // INSERT new log record
+      // INSERT new log record (New viewing / Rewatch)
       const { data: newLogData, error: insertError } = await supabase
         .from("logs")
         .insert({
@@ -359,7 +387,7 @@ export async function performQuickLog(options: QuickLogOptions): Promise<QuickLo
           notes: null,
           platform: platform || "Netflix",
           format: "Normal",
-          is_rewatch: isRewatch,
+          is_rewatch: Boolean(isRewatch || shouldCreateNew),
           contains_spoilers: false,
           custom_poster_path: null,
         })

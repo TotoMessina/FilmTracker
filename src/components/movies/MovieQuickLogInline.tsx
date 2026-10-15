@@ -11,7 +11,8 @@ import {
   Loader2, 
   X, 
   ExternalLink,
-  Edit3
+  Edit3,
+  Pencil
 } from "lucide-react";
 import { TMDBMovie } from "@/lib/tmdb/client";
 import { Log } from "@/lib/supabase/types";
@@ -20,6 +21,7 @@ import { useAuth } from "@/lib/context/AuthContext";
 import { 
   performQuickLog, 
   getExistingUserLog,
+  getAllUserMovieLogs,
   POPULAR_PLATFORMS, 
   getLastUsedPlatform, 
   setLastUsedPlatform 
@@ -44,6 +46,8 @@ export function MovieQuickLogInline({
   const { user, isGuest } = useAuth();
 
   const [currentLog, setCurrentLog] = useState<Log | null>(existingLog);
+  const [allLogs, setAllLogs] = useState<Log[]>([]);
+  const [mode, setMode] = useState<"rewatch" | "edit">("rewatch");
   const [rating, setRating] = useState<number>(existingLog?.rating ?? 7.0);
   const [hoverRating, setHoverRating] = useState<number | null>(null);
   const [dateOption, setDateOption] = useState<"today" | "yesterday" | "none" | "custom">("today");
@@ -61,19 +65,36 @@ export function MovieQuickLogInline({
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Sync / fetch existing log on mount or when props update
+  // Sync / fetch existing logs on mount or when props update
   useEffect(() => {
     if (existingLog) {
       setCurrentLog(existingLog);
-      applyLogToForm(existingLog);
-      return;
+      setAllLogs([existingLog]);
+      setMode("rewatch");
+      setIsRewatch(true);
+      setDateOption("today");
     }
 
-    // Auto-fetch if not passed
-    getExistingUserLog(movie.id, user?.id, Boolean(isGuest || !user)).then((found) => {
-      if (found) {
-        setCurrentLog(found);
-        applyLogToForm(found);
+    // Auto-fetch all logs for movie
+    getAllUserMovieLogs(movie.id, user?.id, Boolean(isGuest || !user)).then((logs) => {
+      if (logs && logs.length > 0) {
+        setAllLogs(logs);
+        setCurrentLog(logs[0]);
+        // Default to registering a new rewatch with today's date
+        setMode("rewatch");
+        setIsRewatch(true);
+        setDateOption("today");
+        if (typeof logs[0].rating === "number") {
+          setRating(logs[0].rating);
+        }
+        if (logs[0].platform) {
+          setPlatform(logs[0].platform);
+        }
+      } else {
+        setAllLogs([]);
+        setCurrentLog(null);
+        setMode("rewatch");
+        setIsRewatch(false);
       }
     });
   }, [movie.id, existingLog, user, isGuest]);
@@ -126,14 +147,17 @@ export function MovieQuickLogInline({
 
     const watchedAt = getComputedWatchedAt();
 
+    const isRewatchMode = mode === "rewatch" && (allLogs.length > 0 || userWatched || currentLog !== null);
+
     try {
       const result = await performQuickLog({
         movie,
         rating,
         watchedAt,
         platform,
-        isRewatch,
-        existingLogId: currentLog?.id || null,
+        isRewatch: isRewatchMode || isRewatch,
+        existingLogId: isRewatchMode ? null : (currentLog?.id || null),
+        createNewRewatch: isRewatchMode,
         user,
         isGuest: Boolean(isGuest || !user),
         triggerConfetti,
@@ -146,6 +170,11 @@ export function MovieQuickLogInline({
 
       if (result.log) {
         setCurrentLog(result.log);
+        setAllLogs((prev) =>
+          isRewatchMode
+            ? [result.log!, ...prev]
+            : prev.map((l) => (l.id === result.log!.id ? result.log! : l))
+        );
       }
 
       setSavedSuccess(true);
@@ -185,11 +214,16 @@ export function MovieQuickLogInline({
             </div>
             <div>
               <h4 className="font-bold text-sm text-emerald-300">
-                {currentLog ? "¡Registro actualizado con éxito!" : "¡Registrada con éxito en tu Diario!"}
+                {mode === "rewatch" && (allLogs.length > 1 || userWatched)
+                  ? "¡Nuevo Rewatch registrado con éxito! 🔄"
+                  : currentLog
+                  ? "¡Registro actualizado con éxito!"
+                  : "¡Registrada con éxito en tu Diario!"}
               </h4>
               <p className="text-xs text-zinc-300">
                 {movie.title} • {rating}★ • {platform} •{" "}
                 {dateOption === "none" ? "Sin fecha" : getComputedWatchedAt()}
+                {mode === "rewatch" && " • Sumado a tus estadísticas"}
               </p>
             </div>
           </div>
@@ -226,19 +260,31 @@ export function MovieQuickLogInline({
           <div>
             <div className="flex items-center gap-2">
               <h4 className="font-extrabold text-sm text-white">
-                {currentLog ? "Editando tu Registro" : "Carga Rápida en 1 Clic"}
+                {allLogs.length > 0 || currentLog
+                  ? mode === "rewatch"
+                    ? "Registrar nuevo Rewatch"
+                    : "Editar registro existente"
+                  : "Carga Rápida en 1 Clic"}
               </h4>
               <span className={`px-2 py-0.2 rounded-full border text-[9px] font-extrabold uppercase ${
-                currentLog 
-                  ? "bg-blue-500/20 text-blue-300 border-blue-500/30" 
+                allLogs.length > 0 || currentLog
+                  ? mode === "rewatch"
+                    ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
+                    : "bg-blue-500/20 text-blue-300 border-blue-500/30"
                   : "bg-amber-500/20 text-amber-300 border-amber-500/30"
               }`}>
-                {currentLog ? "✏️ Modo Edición" : "⚡ Instantáneo"}
+                {allLogs.length > 0 || currentLog
+                  ? mode === "rewatch"
+                    ? "🔄 Nuevo Rewatch"
+                    : "✏️ Modo Edición"
+                  : "⚡ Instantáneo"}
               </span>
             </div>
             <p className="text-[11px] text-zinc-400">
-              {currentLog 
-                ? "Esta película ya está registrada. Modificá tu calificación, fecha o plataforma sin duplicarla."
+              {allLogs.length > 0 || currentLog
+                ? mode === "rewatch"
+                  ? "Registrá una nueva fecha de visualización sin borrar tu historial anterior."
+                  : "Modificá la calificación, fecha o plataforma de tu registro anterior."
                 : "Puntuá y guardá directamente sin abrir formularios pesados"}
             </p>
           </div>
@@ -255,16 +301,58 @@ export function MovieQuickLogInline({
         )}
       </div>
 
-      {currentLog && (
-        <div className="p-2.5 rounded-xl bg-blue-950/40 border border-blue-500/30 text-xs text-blue-200 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5">
-            <span className="text-blue-400 font-bold">✓ Registro actual:</span>
-            <span>
-              {currentLog.rating ? `${currentLog.rating}★` : "Sin puntuación"} • {currentLog.platform || "Sin plataforma"} •{" "}
-              {currentLog.watched_at || "Sin fecha"}
-            </span>
+      {(currentLog || allLogs.length > 0) && (
+        <div className="p-3 rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-purple-500/10 border border-amber-500/30 space-y-2 animate-in fade-in">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                {allLogs.length > 1 ? `Vista ${allLogs.length} veces` : "Ya registrada"}
+              </span>
+              <span className="text-xs font-bold text-white">
+                {mode === "rewatch" ? "Nuevo Rewatch (Nueva fecha)" : "Editar anterior"}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1 p-0.5 bg-black/50 rounded-xl border border-white/10 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("rewatch");
+                  setIsRewatch(true);
+                  setDateOption("today");
+                }}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                  mode === "rewatch"
+                    ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm"
+                    : "text-zinc-400 hover:text-white"
+                }`}
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>+ Rewatch</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("edit");
+                  if (currentLog) applyLogToForm(currentLog);
+                }}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition flex items-center gap-1 cursor-pointer ${
+                  mode === "edit"
+                    ? "bg-white/15 text-white border border-white/10"
+                    : "text-zinc-400 hover:text-white"
+                }`}
+              >
+                <Pencil className="w-3 h-3" />
+                <span>Editar anterior</span>
+              </button>
+            </div>
           </div>
-          <span className="text-[10px] text-blue-400/80 font-mono">No creará duplicados</span>
+
+          <p className="text-[11px] text-zinc-300">
+            {mode === "rewatch"
+              ? "Se guardará con la fecha elegida en tu diario y sumará tiempo a tus estadísticas sin borrar las anteriores."
+              : `Modificando la visualización del ${currentLog?.watched_at || "sin fecha"}.`}
+          </p>
         </div>
       )}
 
@@ -478,11 +566,16 @@ export function MovieQuickLogInline({
           {saving ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              <span>{currentLog ? "Actualizando registro..." : "Guardando en tu diario..."}</span>
+              <span>{mode === "rewatch" && (currentLog || allLogs.length > 0) ? "Guardando nuevo rewatch..." : currentLog ? "Actualizando registro..." : "Guardando en tu diario..."}</span>
             </>
           ) : (
             <>
-              {currentLog ? (
+              {mode === "rewatch" && (currentLog || allLogs.length > 0) ? (
+                <>
+                  <RotateCcw className="w-4 h-4 text-amber-300" />
+                  <span>Guardar nuevo Rewatch (+1 vista) ⚡</span>
+                </>
+              ) : currentLog ? (
                 <>
                   <Check className="w-4 h-4" />
                   <span>Guardar Cambios (Actualizar Registro) ⚡</span>
@@ -502,12 +595,14 @@ export function MovieQuickLogInline({
             type="button"
             onClick={() => {
               if (onClose) onClose();
-              openLogModal(movie, currentLog || undefined);
+              openLogModal(movie, mode === "edit" ? (currentLog || undefined) : undefined);
             }}
             className="text-[11px] text-zinc-400 hover:text-zinc-200 transition inline-flex items-center gap-1 underline underline-offset-2 cursor-pointer"
           >
             <span>
-              {currentLog
+              {mode === "rewatch" && (currentLog || allLogs.length > 0)
+                ? "¿Querés escribir reseña completa para este rewatch o notas privadas? Abrir editor completo"
+                : currentLog
                 ? "¿Querés editar reseña completa, notas privadas o acompañantes? Abrir editor completo"
                 : "¿Querés escribir reseña o agregar acompañantes? Abrir editor completo"}
             </span>
