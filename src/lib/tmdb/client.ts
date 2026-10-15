@@ -160,6 +160,10 @@ export async function searchPeople(query: string, page: number = 1): Promise<TMD
   return fetchTMDB<TMDBResponse<TMDBPerson>>("/search/person", { query, page, include_adult: "false" });
 }
 
+export async function getPopularPeople(page: number = 1): Promise<TMDBResponse<TMDBPerson>> {
+  return fetchTMDB<TMDBResponse<TMDBPerson>>("/person/popular", { page, language: "es-MX" });
+}
+
 export async function searchCompanies(query: string, page: number = 1): Promise<TMDBResponse<TMDBCompany>> {
   if (!query.trim()) {
     return { page: 1, results: [], total_pages: 0, total_results: 0 };

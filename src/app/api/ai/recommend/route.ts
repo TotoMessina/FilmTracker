@@ -4,6 +4,7 @@ import { AIRecommendation } from "@/lib/groq/types";
 import { searchMovies } from "@/lib/tmdb/client";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 function cleanAndParseJSON(raw: string): any {
   let cleaned = raw.trim();
@@ -146,6 +147,8 @@ export async function POST(req: NextRequest) {
   const normalizedExclusionSet = new Set<string>();
   const genreCounts: Record<string, number> = {};
   const actorCounts: Record<string, number> = {};
+  const directorCounts: Record<string, { count: number; totalRating: number; ratedCount: number }> = {};
+  const decadeCounts: Record<string, number> = {};
 
   try {
     const body = await req.json();
@@ -212,80 +215,161 @@ export async function POST(req: NextRequest) {
         ratingCount += 1;
       }
 
+      // Track decades
+      const relYearStr = log.movie?.release_date || (log.watched_at ? log.watched_at.slice(0, 4) : null);
+      const parsedYear = relYearStr ? parseInt(relYearStr.slice(0, 4)) : null;
+      if (parsedYear && parsedYear >= 1920 && parsedYear <= 2030) {
+        const decade = `${Math.floor(parsedYear / 10) * 10}s`;
+        decadeCounts[decade] = (decadeCounts[decade] || 0) + 1;
+      }
+
+      // Track directors and actors from cast_data
       const cast: any[] = log.cast_data || log.movie?.cast_data || [];
-      cast.forEach((actor: any) => {
-        const actorName = typeof actor === "string" ? actor : actor?.name;
-        if (actorName) {
-          actorCounts[actorName] = (actorCounts[actorName] || 0) + 1;
+      cast.forEach((person: any) => {
+        const isDirector = person?.character === "Director" || person?.job === "Director";
+        const name = typeof person === "string" ? person : person?.name;
+        if (name && typeof name === "string") {
+          const cleanName = name.trim();
+          if (cleanName) {
+            if (isDirector) {
+              if (!directorCounts[cleanName]) {
+                directorCounts[cleanName] = { count: 0, totalRating: 0, ratedCount: 0 };
+              }
+              directorCounts[cleanName].count += 1;
+              if (rating !== null) {
+                directorCounts[cleanName].totalRating += rating;
+                directorCounts[cleanName].ratedCount += 1;
+              }
+            } else {
+              actorCounts[cleanName] = (actorCounts[cleanName] || 0) + 1;
+            }
+          }
         }
       });
     });
 
     const topGenres = Object.entries(genreCounts)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 4)
-      .map(([name]) => name);
+      .slice(0, 6)
+      .map(([name, count]) => `${name} (${count} pelis)`);
 
     const avgRating =
       ratingCount > 0 ? (totalRating / ratingCount).toFixed(1) : "Sin calificar";
 
-    const favoriteActors = Object.entries(actorCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([name]) => name);
-
-    // 3. User favorites (ratings >= 7 or highest rated) for positive taste anchoring
-    const topRatedMovies = [...logs]
-      .filter((l: any) => typeof l.rating === "number" && l.rating >= 7)
-      .sort((a: any, b: any) => (b.rating || 0) - (a.rating || 0))
-      .slice(0, 10)
-      .map((l: any) => {
-        const title = l.title || l.movie?.title || "Película";
-        return `• ${title} (${l.rating}/10)`;
+    const topDirectors = Object.entries(directorCounts)
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 8)
+      .map(([name, d]) => {
+        const avg = d.ratedCount > 0 ? ` [promedio ${(d.totalRating / d.ratedCount).toFixed(1)}★]` : "";
+        return `${name} (${d.count} vistas${avg})`;
       });
 
-    // 4. Recent watches for viewing context
+    const favoriteActors = Object.entries(actorCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([name, count]) => `${name} (${count})`);
+
+    const sortedDecades = Object.entries(decadeCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([decade, count]) => `${decade} (${count})`);
+
+    // 3. User favorites (ratings >= 8.5) - defining masterworks
+    const masterpieces = [...logs]
+      .filter((l: any) => typeof l.rating === "number" && l.rating >= 8.5)
+      .sort((a: any, b: any) => (b.rating || 0) - (a.rating || 0))
+      .slice(0, 25)
+      .map((l: any) => {
+        const title = l.title || l.movie?.title || "Película";
+        const yr = l.movie?.release_date ? ` (${l.movie.release_date.slice(0, 4)})` : "";
+        return `• ${title}${yr}: ${l.rating}/10`;
+      });
+
+    // 4. Solidly enjoyed films (ratings 7.0 to 8.4)
+    const greatMovies = [...logs]
+      .filter((l: any) => typeof l.rating === "number" && l.rating >= 7.0 && l.rating < 8.5)
+      .sort((a: any, b: any) => (b.rating || 0) - (a.rating || 0))
+      .slice(0, 25)
+      .map((l: any) => {
+        const title = l.title || l.movie?.title || "Película";
+        const yr = l.movie?.release_date ? ` (${l.movie.release_date.slice(0, 4)})` : "";
+        return `• ${title}${yr}: ${l.rating}/10`;
+      });
+
+    // 5. Low rated films (ratings <= 5.0) - crucial negative signal
+    const lowRatedMovies = [...logs]
+      .filter((l: any) => typeof l.rating === "number" && l.rating <= 5.0)
+      .sort((a: any, b: any) => (a.rating || 0) - (b.rating || 0))
+      .slice(0, 15)
+      .map((l: any) => {
+        const title = l.title || l.movie?.title || "Película";
+        return `• ${title}: ${l.rating}/10`;
+      });
+
+    // 6. Rewatches (sacred movies)
+    const rewatches = [...logs]
+      .filter((l: any) => l.is_rewatch)
+      .slice(0, 15)
+      .map((l: any) => l.title || l.movie?.title)
+      .filter(Boolean);
+
+    // 7. Recent watches for viewing context
     const recentMovies = [...logs]
-      .slice(0, 10)
+      .slice(0, 12)
       .map((l: any) => {
         const title = l.title || l.movie?.title || "Película";
         const rating = typeof l.rating === "number" ? `${l.rating}/10` : "sin calificar";
         return `• ${title} [${rating}]`;
       });
 
-    // 5. Complete exclusion list of ALL user's watched and watchlist titles
+    // 8. Expanded exclusion list: raised from 350 to up to 1,500 titles
+    // Groq model (128k context) handles 1,500 titles effortlessly in ~6k tokens
     const allTitlesArray = Array.from(allKnownTitlesSet);
-    // Include all titles up to 350 to provide Groq the full picture without overflowing context limits
-    const excludedTitlesPromptText = allTitlesArray.slice(0, 350).join(", ");
+    const MAX_EXCLUSION_TITLES = 1500;
+    const excludedTitlesPromptText = allTitlesArray.slice(0, MAX_EXCLUSION_TITLES).join(", ");
 
     const systemPrompt =
-      "Eres CineBot, el curador cinematográfico de FilmTracker. Tu estilo es cálido, apasionado, selecto y perspicaz. Respondes SIEMPRE en español en formato JSON. Tus recomendaciones deben ser 100% NOVEDOSAS para el usuario, respetando con rigor absoluto la lista de exclusiones para NUNCA repetir películas que el usuario ya haya visto o tenga en su watchlist.";
+      "Eres CineBot, el curador cinematográfico de máxima élite de FilmTracker. Te apasiona el cine mundial, el cine de autor, las joyas de culto, los clásicos atemporales y las sorpresas contemporáneas. Respondes SIEMPRE en español en formato JSON. Tu misión es analizar a fondo el ADN cinéfilo del usuario a partir de su catálogo de más de 500 películas vistas y recomendar exactamente 10 joyas cinematográficas 100% NOVEDOSAS que sintonicen de forma impecable con su gusto personal, garantizando CERO repeticiones.";
 
-    const userPrompt = `Perfil de gustos cinematográficos del usuario:
-- Géneros favoritos: ${topGenres.length > 0 ? topGenres.join(", ") : "Cine variado"}
-- Puntuación promedio otorgada: ${avgRating}
-${favoriteActors.length > 0 ? `- Actores frecuentes: ${favoriteActors.join(", ")}` : ""}
+    const userPrompt = `ANÁLISIS DE PERFIL Y GUSTOS CINEMATOGRÁFICOS DEL USUARIO:
+- Total de películas en su historial: ${logs.length} películas registradas.
+- Puntuación promedio otorgada: ${avgRating} / 10
+- Géneros predilectos: ${topGenres.length > 0 ? topGenres.join(", ") : "Cine variado"}
+${topDirectors.length > 0 ? `- Directores recurrentes / favoritos: ${topDirectors.join(", ")}` : ""}
+${favoriteActors.length > 0 ? `- Actores e intérpretes más vistos: ${favoriteActors.join(", ")}` : ""}
+${sortedDecades.length > 0 ? `- Épocas más frecuentadas: ${sortedDecades.join(", ")}` : ""}
+${rewatches.length > 0 ? `- Películas que ha vuelto a ver (Rewatches sagrados): ${rewatches.join(", ")}` : ""}
 
-Películas que más le gustaron (joyas que definen su gusto):
-${topRatedMovies.length > 0 ? topRatedMovies.join("\n") : "Sin calificaciones destacadas aún"}
+1. OBRAS MAESTRAS Y JOYAS DEL USUARIO (Calificadas con 8.5 a 10):
+${masterpieces.length > 0 ? masterpieces.join("\n") : "Sin calificaciones de 8.5-10 aún"}
 
-Películas vistas recientemente:
+2. PELÍCULAS DESTACADAS Y MUY DISFRUTADAS (Calificadas con 7.0 a 8.4):
+${greatMovies.length > 0 ? greatMovies.join("\n") : "Sin calificaciones de 7-8.4 aún"}
+
+${lowRatedMovies.length > 0 ? `3. PELÍCULAS PEOR VALORADAS (Evitar estilos, fórmulas o tonos similares a estas):
+${lowRatedMovies.join("\n")}
+` : ""}
+4. VISIONADOS MÁS RECIENTES (Momento cinéfilo actual):
 ${recentMovies.join("\n")}
 
-LISTA DE EXCLUSIÓN TOTAL (PELÍCULAS QUE EL USUARIO YA VIO O TIENE EN SU WATCHLIST):
+======================================================================
+UNIVERSO COMPLETO DE PELÍCULAS DEL USUARIO (${Math.min(allTitlesArray.length, MAX_EXCLUSION_TITLES)} títulos de ${allTitlesArray.length} totales en su historial y watchlist):
 ${excludedTitlesPromptText || "Ninguna"}
+======================================================================
 
-REGLAS OBLIGATORIAS:
-1. Recomienda exactamente 10 candidatas a películas diferentes que NO figuren en la LISTA DE EXCLUSIÓN TOTAL ni sean secuelas directas de las mismas ya vistas, ni versiones con títulos en otros idiomas de las mismas películas.
-2. Deben ser películas reconocidas o joyas de culto, afines al perfil pero que ofrezcan descubrimiento genuino.
-3. Responde ÚNICAMENTE con este JSON:
+INSTRUCCIONES CLAVE DE CURADURÍA:
+1. USA EL UNIVERSO COMPLETO ANTERIOR PARA MAPEAR SUS GUSTOS: Observa el mapa completo de películas que el usuario ha visto. Descubre qué directores de culto conoce, qué movimientos cinematográficos sigue, si prefiere ritmo contemplativo o adrenalina narrativa, tonos existenciales o giros de guion inteligentes.
+2. EXCLUSIÓN TOTAL Y ABSOLUTA (REGLA INQUEBRANTABLE): NINGUNA de las películas presentes en el universo anterior ni en su Watchlist puede ser recomendada. Tampoco recomiendes secuelas directas de películas que ya vio ni versiones de la misma película con otro título.
+3. VARIEDAD Y DESCUBRIMIENTO REAL: Recomienda exactamente 10 candidatas que expandan sus horizontes: pueden ser obras maestras internacionales (cine europeo, asiático o latinoamericano), joyas de autor, clásicos imperdibles o cine independiente que se alinee con su nivel de sofisticación cinéfila.
+
+Responde ÚNICAMENTE con este JSON:
 {
   "recommendations": [
     {
       "title": "Nombre de la película",
       "year": 2019,
       "reason": "Explicación concisa y persuasiva (1 o 2 oraciones) conectando directamente con su estilo y gustos.",
-      "vibe": "Tono cinematográfico (ej: Thriller electrizante, Odisea melancólica, Tensión psicológica)",
+      "vibe": "Tono cinematográfico (ej: Thriller psicológico implacable, Odisea melancólica, Tensión visceral)",
       "confidence": 95
     }
   ]

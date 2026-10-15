@@ -34,6 +34,7 @@ import {
   TMDBCompany,
   searchMovies, 
   searchPeople,
+  getPopularPeople,
   searchCompanies,
   getTrendingMovies, 
   getTopRatedMovies, 
@@ -230,11 +231,14 @@ function SearchContent() {
           ]);
 
           if (!isCancelled) {
+            const sortedPeople = [...(peopleRes.results || [])].sort(
+              (a, b) => (b.popularity || 0) - (a.popularity || 0)
+            );
             if (append) {
               setMovies((prev) => [...prev, ...movieRes.results]);
             } else {
               setMovies(movieRes.results);
-              setPeople(peopleRes.results);
+              setPeople(sortedPeople);
               setStudios(studioRes.results);
             }
             setTotalPages(movieRes.total_pages || 1);
@@ -242,7 +246,7 @@ function SearchContent() {
           return;
         }
 
-        // 2. DEDICATED PEOPLE SEARCH
+        // 2. DEDICATED PEOPLE SEARCH (Sorted by popularity)
         if (searchTab === "people") {
           let res;
           if (queryTrimmed) {
@@ -254,7 +258,7 @@ function SearchContent() {
               name: a.name,
               profile_path: a.profile_path,
               known_for_department: "Acting",
-              popularity: 100,
+              popularity: a.popularity ?? 10,
               known_for: a.known_for?.map((title, idx) => ({
                 id: idx,
                 title,
@@ -268,16 +272,20 @@ function SearchContent() {
             }));
             res = { results: tmdbLikePeople, total_pages: 1, total_results: countryActors.length, page: 1 };
           } else {
-            res = await searchPeople("a", pageNum); // Initial directory
+            // Worldwide most popular people / actors
+            res = await getPopularPeople(pageNum);
           }
 
           if (!isCancelled) {
+            const sortedPeople = [...(res?.results || [])].sort(
+              (a, b) => (b.popularity || 0) - (a.popularity || 0)
+            );
             if (append) {
-              setPeople((prev) => [...prev, ...res.results]);
+              setPeople((prev) => [...prev, ...sortedPeople]);
             } else {
-              setPeople(res.results);
+              setPeople(sortedPeople);
             }
-            setTotalPages(res.total_pages || 1);
+            setTotalPages(res?.total_pages || 1);
           }
           return;
         }
@@ -404,9 +412,12 @@ function SearchContent() {
           setMovies((prev) => [...prev, ...movieRes.results]);
         }
       } else if (searchTab === "people") {
-        const res = await searchPeople(queryTrimmed || "a", nextPage);
+        const res = queryTrimmed
+          ? await searchPeople(queryTrimmed, nextPage)
+          : await getPopularPeople(nextPage);
         if (res?.results) {
-          setPeople((prev) => [...prev, ...res.results]);
+          const sorted = [...res.results].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+          setPeople((prev) => [...prev, ...sorted]);
         }
       } else if (searchTab === "studios") {
         if (queryTrimmed) {
